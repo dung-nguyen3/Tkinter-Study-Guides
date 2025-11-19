@@ -230,7 +230,12 @@ class ExcelMasterChartApp:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(1, weight=1)
+
+        # Configure all rows with proper weights for resizing
+        main_frame.rowconfigure(0, weight=0)  # Status bar - fixed height
+        main_frame.rowconfigure(1, weight=0)  # Section 1 (column setup) - fixed height
+        main_frame.rowconfigure(2, weight=1)  # Section 2 (data grid) - EXPANDABLE
+        main_frame.rowconfigure(3, weight=0)  # Section 3 (export) - fixed height
 
         # Status bar at top
         self.create_status_bar(main_frame)
@@ -260,7 +265,7 @@ class ExcelMasterChartApp:
     def create_column_setup_section(self, parent):
         """Create Section 1: Column Setup"""
         setup_frame = ttk.LabelFrame(parent, text="📊 Section 1: Column Setup", padding="10")
-        setup_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        setup_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
 
         # Preset selector
         preset_frame = ttk.Frame(setup_frame)
@@ -351,7 +356,7 @@ class ExcelMasterChartApp:
     def create_export_section(self, parent):
         """Create Section 3: Export Controls"""
         export_frame = ttk.LabelFrame(parent, text="💾 Section 3: Export Options", padding="10")
-        export_frame.grid(row=3, column=0, sticky=(tk.W, tk.E))
+        export_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         export_frame.columnconfigure(0, weight=1)
 
         # Export format selection
