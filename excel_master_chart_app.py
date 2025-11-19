@@ -407,7 +407,7 @@ class ExcelMasterChartApp:
             headers=self.current_columns,
             height=450,
             theme="light blue",
-            font=("Calibri", 11),
+            font=("Calibri", 11, "normal"),
             header_font=("Calibri", 11, "bold"),
             show_x_scrollbar=True,
             show_y_scrollbar=True,
