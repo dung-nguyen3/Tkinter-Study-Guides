@@ -571,7 +571,7 @@ class ExcelMasterChartApp:
             ws.append(self.current_columns)
 
             # Header styling
-            header_font = Font(name="Calibri", size=12, bold=True, color=HEADER_FONT_COLOR)
+            header_font = Font(name="Calibri", size=12, bold=True, color=HEADER_FONT_COLOR[1:])
             header_fill = PatternFill(start_color=HEADER_BG_COLOR[1:], end_color=HEADER_BG_COLOR[1:], fill_type="solid")
             header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
@@ -619,9 +619,9 @@ class ExcelMasterChartApp:
 
                     # First column bold
                     if col_idx == 1:
-                        cell.font = Font(name="Calibri", size=10, bold=True, color=DATA_FONT_COLOR)
+                        cell.font = Font(name="Calibri", size=10, bold=True, color=DATA_FONT_COLOR[1:])
                     else:
-                        cell.font = Font(name="Calibri", size=10, color=DATA_FONT_COLOR)
+                        cell.font = Font(name="Calibri", size=10, color=DATA_FONT_COLOR[1:])
 
             # ================================================================
             # COLUMN WIDTHS
