@@ -239,88 +239,93 @@ class ExcelMasterChartApp:
         self.create_status_bar_bottom()
 
     def create_ribbon(self):
-        """Create Excel-style ribbon toolbar"""
-        ribbon_frame = ttk.Frame(self.root, relief=tk.RAISED, borderwidth=1)
-        ribbon_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=0, pady=0)
-        ribbon_frame.columnconfigure(0, weight=1)
+        """Create Excel-style ribbon toolbar with tabs"""
+        ribbon_container = ttk.Frame(self.root, relief=tk.RAISED, borderwidth=1)
+        ribbon_container.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=0, pady=0)
 
-        # Ribbon content area
-        ribbon_content = ttk.Frame(ribbon_frame, padding="5")
-        ribbon_content.pack(fill=tk.X, expand=True)
+        # Create notebook for tabbed ribbon
+        self.ribbon_notebook = ttk.Notebook(ribbon_container)
+        self.ribbon_notebook.pack(fill=tk.BOTH, expand=True)
 
-        # ========== HOME GROUP ==========
-        home_group = ttk.LabelFrame(ribbon_content, text="Column Setup", padding="5")
-        home_group.pack(side=tk.LEFT, padx=5, pady=5)
+        # HOME TAB
+        home_tab = ttk.Frame(self.ribbon_notebook, padding="10")
+        self.ribbon_notebook.add(home_tab, text="Home")
 
-        # Preset selector
-        preset_row = ttk.Frame(home_group)
-        preset_row.pack(fill=tk.X, pady=2)
-        ttk.Label(preset_row, text="Preset:").pack(side=tk.LEFT, padx=(0, 5))
+        # Column Setup Group
+        col_group = ttk.LabelFrame(home_tab, text="Column Setup", padding="10")
+        col_group.pack(side=tk.LEFT, padx=5, fill=tk.Y)
+
+        ttk.Label(col_group, text="Preset:").grid(row=0, column=0, sticky=tk.W, pady=2)
         preset_combo = ttk.Combobox(
-            preset_row,
+            col_group,
             textvariable=self.current_preset,
             values=list(COLUMN_PRESETS.keys()),
             state="readonly",
-            width=25
+            width=20
         )
-        preset_combo.pack(side=tk.LEFT)
+        preset_combo.grid(row=0, column=1, columnspan=2, pady=2, padx=5)
         preset_combo.bind("<<ComboboxSelected>>", self.on_preset_change)
 
-        # Column buttons
-        btn_row = ttk.Frame(home_group)
-        btn_row.pack(fill=tk.X, pady=2)
-        ttk.Button(btn_row, text="Custom Columns", command=self.define_custom_columns, width=15).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_row, text="Edit Headers", command=self.edit_column_headers, width=15).pack(side=tk.LEFT, padx=2)
+        ttk.Button(col_group, text="Custom Columns", command=self.define_custom_columns, width=15).grid(row=1, column=0, columnspan=2, pady=2, padx=2)
+        ttk.Button(col_group, text="Edit Headers", command=self.edit_column_headers, width=15).grid(row=1, column=2, pady=2, padx=2)
 
-        # ========== DATA MANAGEMENT GROUP ==========
-        data_group = ttk.LabelFrame(ribbon_content, text="Data", padding="5")
-        data_group.pack(side=tk.LEFT, padx=5, pady=5)
+        # Rows Group
+        rows_group = ttk.LabelFrame(home_tab, text="Rows", padding="10")
+        rows_group.pack(side=tk.LEFT, padx=5, fill=tk.Y)
 
-        ttk.Button(data_group, text="Save Data", command=self.save_data_json, width=12).pack(pady=2)
-        ttk.Button(data_group, text="Load Data", command=self.load_data_json, width=12).pack(pady=2)
+        ttk.Label(rows_group, text="Quick Add:").grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=2)
+        ttk.Button(rows_group, text="+10", command=lambda: self.add_quick_rows(10), width=6).grid(row=1, column=0, padx=2, pady=2)
+        ttk.Button(rows_group, text="+50", command=lambda: self.add_quick_rows(50), width=6).grid(row=1, column=1, padx=2, pady=2)
+        ttk.Button(rows_group, text="+100", command=lambda: self.add_quick_rows(100), width=6).grid(row=1, column=2, padx=2, pady=2)
 
-        # ========== ROWS GROUP ==========
-        rows_group = ttk.LabelFrame(ribbon_content, text="Rows", padding="5")
-        rows_group.pack(side=tk.LEFT, padx=5, pady=5)
+        ttk.Label(rows_group, text="Manage:").grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(10,2))
+        ttk.Button(rows_group, text="Delete Empty", command=self.delete_empty_rows, width=12).grid(row=3, column=0, columnspan=2, pady=2, padx=2)
+        ttk.Button(rows_group, text="Clear All", command=self.clear_all_data, width=12).grid(row=3, column=2, pady=2, padx=2)
 
-        quick_row = ttk.Frame(rows_group)
-        quick_row.pack(fill=tk.X, pady=2)
-        ttk.Button(quick_row, text="+10", command=lambda: self.add_quick_rows(10), width=5).pack(side=tk.LEFT, padx=1)
-        ttk.Button(quick_row, text="+50", command=lambda: self.add_quick_rows(50), width=5).pack(side=tk.LEFT, padx=1)
-        ttk.Button(quick_row, text="+100", command=lambda: self.add_quick_rows(100), width=5).pack(side=tk.LEFT, padx=1)
+        # DATA TAB
+        data_tab = ttk.Frame(self.ribbon_notebook, padding="10")
+        self.ribbon_notebook.add(data_tab, text="Data")
 
-        delete_row = ttk.Frame(rows_group)
-        delete_row.pack(fill=tk.X, pady=2)
-        ttk.Button(delete_row, text="Delete Empty", command=self.delete_empty_rows, width=12).pack(side=tk.LEFT, padx=1)
-        ttk.Button(delete_row, text="Clear All", command=self.clear_all_data, width=12).pack(side=tk.LEFT, padx=1)
+        # Save/Load Group
+        file_group = ttk.LabelFrame(data_tab, text="File Operations", padding="10")
+        file_group.pack(side=tk.LEFT, padx=5, fill=tk.Y)
 
-        # ========== EXPORT GROUP ==========
-        export_group = ttk.LabelFrame(ribbon_content, text="Export", padding="5")
-        export_group.pack(side=tk.LEFT, padx=5, pady=5, fill=tk.Y)
+        ttk.Button(file_group, text="Save Data", command=self.save_data_json, width=15).grid(row=0, column=0, pady=5, padx=5)
+        ttk.Button(file_group, text="Load Data", command=self.load_data_json, width=15).grid(row=1, column=0, pady=5, padx=5)
 
-        # Format selection
+        # EXPORT TAB
+        export_tab = ttk.Frame(self.ribbon_notebook, padding="10")
+        self.ribbon_notebook.add(export_tab, text="Export")
+
+        # Format Group
+        format_group = ttk.LabelFrame(export_tab, text="Export Format", padding="10")
+        format_group.pack(side=tk.LEFT, padx=5, fill=tk.Y)
+
         ttk.Radiobutton(
-            export_group,
-            text="Master Chart",
+            format_group,
+            text="Master Chart\n(Single Sheet)",
             variable=self.export_format,
             value="master_chart"
-        ).pack(anchor=tk.W, pady=2)
+        ).pack(anchor=tk.W, pady=5, padx=5)
 
         ttk.Radiobutton(
-            export_group,
-            text="Comprehensive",
+            format_group,
+            text="Comprehensive\n(4 Tabs)",
             variable=self.export_format,
             value="comprehensive"
-        ).pack(anchor=tk.W, pady=2)
+        ).pack(anchor=tk.W, pady=5, padx=5)
 
-        # Export button (prominent)
+        # Export Action Group
+        action_group = ttk.LabelFrame(export_tab, text="Action", padding="10")
+        action_group.pack(side=tk.LEFT, padx=5, fill=tk.Y)
+
         export_btn = ttk.Button(
-            export_group,
+            action_group,
             text="EXPORT TO EXCEL",
             command=self.export_to_excel,
-            width=18
+            width=20
         )
-        export_btn.pack(pady=5)
+        export_btn.pack(pady=20, padx=10)
 
     def create_data_grid_ribbon_style(self):
         """Create maximized data grid for ribbon interface"""
