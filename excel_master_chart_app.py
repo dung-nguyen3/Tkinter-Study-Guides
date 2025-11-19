@@ -125,7 +125,7 @@ class ExcelMasterChartApp:
         self.root = root
         self.root.title("Excel Master Chart Creator v2.5")
         self.root.geometry("1400x800")
-        self.root.minsize(1200, 700)  # Set minimum window size
+        self.root.minsize(800, 600)  # Set minimum window size (reduced for better flexibility)
 
         # Data storage
         self.current_columns = []
