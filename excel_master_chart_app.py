@@ -222,35 +222,146 @@ class ExcelMasterChartApp:
     # ========================================================================
 
     def setup_ui(self):
-        """Create the main user interface"""
-        # Main container
-        main_frame = ttk.Frame(self.root, padding="10")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-
+        """Create the main user interface - Ribbon style"""
+        # Configure root window
         self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=0)  # Ribbon - fixed
+        self.root.rowconfigure(1, weight=1)  # Data grid - expandable
+        self.root.rowconfigure(2, weight=0)  # Status bar - fixed
 
-        # Configure all rows with proper weights for resizing
-        main_frame.rowconfigure(0, weight=0)  # Status bar - fixed height
-        main_frame.rowconfigure(1, weight=0)  # Section 1 (column setup) - fixed height
-        main_frame.rowconfigure(2, weight=3)  # Section 2 (data grid) - HIGHLY EXPANDABLE (takes most space)
-        main_frame.rowconfigure(3, weight=1)  # Section 3 (export) - can shrink/expand slightly
+        # Create ribbon toolbar
+        self.create_ribbon()
 
-        # Status bar at top
-        self.create_status_bar(main_frame)
+        # Create data grid (main area)
+        self.create_data_grid_ribbon_style()
 
-        # Section 1: Column Setup
-        self.create_column_setup_section(main_frame)
+        # Create status bar at bottom
+        self.create_status_bar_bottom()
 
-        # Section 2: Data Entry Grid
-        self.create_data_grid_section(main_frame)
+    def create_ribbon(self):
+        """Create Excel-style ribbon toolbar"""
+        ribbon_frame = ttk.Frame(self.root, relief=tk.RAISED, borderwidth=1)
+        ribbon_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=0, pady=0)
+        ribbon_frame.columnconfigure(0, weight=1)
 
-        # Section 3: Export Controls
-        self.create_export_section(main_frame)
+        # Ribbon content area
+        ribbon_content = ttk.Frame(ribbon_frame, padding="5")
+        ribbon_content.pack(fill=tk.X, expand=True)
+
+        # ========== HOME GROUP ==========
+        home_group = ttk.LabelFrame(ribbon_content, text="Column Setup", padding="5")
+        home_group.pack(side=tk.LEFT, padx=5, pady=5)
+
+        # Preset selector
+        preset_row = ttk.Frame(home_group)
+        preset_row.pack(fill=tk.X, pady=2)
+        ttk.Label(preset_row, text="Preset:").pack(side=tk.LEFT, padx=(0, 5))
+        preset_combo = ttk.Combobox(
+            preset_row,
+            textvariable=self.current_preset,
+            values=list(COLUMN_PRESETS.keys()),
+            state="readonly",
+            width=25
+        )
+        preset_combo.pack(side=tk.LEFT)
+        preset_combo.bind("<<ComboboxSelected>>", self.on_preset_change)
+
+        # Column buttons
+        btn_row = ttk.Frame(home_group)
+        btn_row.pack(fill=tk.X, pady=2)
+        ttk.Button(btn_row, text="Custom Columns", command=self.define_custom_columns, width=15).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_row, text="Edit Headers", command=self.edit_column_headers, width=15).pack(side=tk.LEFT, padx=2)
+
+        # ========== DATA MANAGEMENT GROUP ==========
+        data_group = ttk.LabelFrame(ribbon_content, text="Data", padding="5")
+        data_group.pack(side=tk.LEFT, padx=5, pady=5)
+
+        ttk.Button(data_group, text="Save Data", command=self.save_data_json, width=12).pack(pady=2)
+        ttk.Button(data_group, text="Load Data", command=self.load_data_json, width=12).pack(pady=2)
+
+        # ========== ROWS GROUP ==========
+        rows_group = ttk.LabelFrame(ribbon_content, text="Rows", padding="5")
+        rows_group.pack(side=tk.LEFT, padx=5, pady=5)
+
+        quick_row = ttk.Frame(rows_group)
+        quick_row.pack(fill=tk.X, pady=2)
+        ttk.Button(quick_row, text="+10", command=lambda: self.add_quick_rows(10), width=5).pack(side=tk.LEFT, padx=1)
+        ttk.Button(quick_row, text="+50", command=lambda: self.add_quick_rows(50), width=5).pack(side=tk.LEFT, padx=1)
+        ttk.Button(quick_row, text="+100", command=lambda: self.add_quick_rows(100), width=5).pack(side=tk.LEFT, padx=1)
+
+        delete_row = ttk.Frame(rows_group)
+        delete_row.pack(fill=tk.X, pady=2)
+        ttk.Button(delete_row, text="Delete Empty", command=self.delete_empty_rows, width=12).pack(side=tk.LEFT, padx=1)
+        ttk.Button(delete_row, text="Clear All", command=self.clear_all_data, width=12).pack(side=tk.LEFT, padx=1)
+
+        # ========== EXPORT GROUP ==========
+        export_group = ttk.LabelFrame(ribbon_content, text="Export", padding="5")
+        export_group.pack(side=tk.LEFT, padx=5, pady=5, fill=tk.Y)
+
+        # Format selection
+        ttk.Radiobutton(
+            export_group,
+            text="Master Chart",
+            variable=self.export_format,
+            value="master_chart"
+        ).pack(anchor=tk.W, pady=2)
+
+        ttk.Radiobutton(
+            export_group,
+            text="Comprehensive",
+            variable=self.export_format,
+            value="comprehensive"
+        ).pack(anchor=tk.W, pady=2)
+
+        # Export button (prominent)
+        export_btn = ttk.Button(
+            export_group,
+            text="EXPORT TO EXCEL",
+            command=self.export_to_excel,
+            width=18
+        )
+        export_btn.pack(pady=5)
+
+    def create_data_grid_ribbon_style(self):
+        """Create maximized data grid for ribbon interface"""
+        # Main grid container
+        grid_frame = ttk.Frame(self.root, padding="10")
+        grid_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        grid_frame.columnconfigure(0, weight=1)
+        grid_frame.rowconfigure(0, weight=1)
+
+        # Sheet container (takes all available space)
+        sheet_container = ttk.Frame(grid_frame)
+        sheet_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        sheet_container.columnconfigure(0, weight=1)
+        sheet_container.rowconfigure(0, weight=1)
+
+        # This will be replaced when preset is loaded
+        self.sheet_container = sheet_container
+
+    def create_status_bar_bottom(self):
+        """Create status bar at bottom of window"""
+        status_frame = ttk.Frame(self.root, relief=tk.SUNKEN, borderwidth=1)
+        status_frame.grid(row=2, column=0, sticky=(tk.W, tk.E))
+
+        # Left side: Status indicator
+        self.status_label = ttk.Label(status_frame, text="● Ready", foreground="green")
+        self.status_label.pack(side=tk.LEFT, padx=10)
+
+        ttk.Label(status_frame, text="|").pack(side=tk.LEFT, padx=5)
+
+        # Save status
+        self.save_status_label = ttk.Label(status_frame, text="Not saved")
+        self.save_status_label.pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(status_frame, text="|").pack(side=tk.LEFT, padx=5)
+
+        # Row count
+        self.row_count_label = ttk.Label(status_frame, text="Rows: 0/50")
+        self.row_count_label.pack(side=tk.RIGHT, padx=10)
 
     def create_status_bar(self, parent):
-        """Create status bar showing save status"""
+        """Create status bar showing save status (DEPRECATED - kept for compatibility)"""
         status_frame = ttk.Frame(parent)
         status_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
 
