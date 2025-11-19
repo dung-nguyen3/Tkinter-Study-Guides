@@ -234,8 +234,8 @@ class ExcelMasterChartApp:
         # Configure all rows with proper weights for resizing
         main_frame.rowconfigure(0, weight=0)  # Status bar - fixed height
         main_frame.rowconfigure(1, weight=0)  # Section 1 (column setup) - fixed height
-        main_frame.rowconfigure(2, weight=1)  # Section 2 (data grid) - EXPANDABLE
-        main_frame.rowconfigure(3, weight=0)  # Section 3 (export) - fixed height
+        main_frame.rowconfigure(2, weight=3)  # Section 2 (data grid) - HIGHLY EXPANDABLE (takes most space)
+        main_frame.rowconfigure(3, weight=1)  # Section 3 (export) - can shrink/expand slightly
 
         # Status bar at top
         self.create_status_bar(main_frame)
@@ -436,8 +436,8 @@ class ExcelMasterChartApp:
         self.sheet.enable_bindings(
             "single_select", "drag_select", "column_width_resize",
             "double_click_column_resize", "row_height_resize",
-            "column_select", "row_select", "edit_cell",
-            "copy", "paste", "delete", "undo", "redo"
+            "column_select", "row_select", "edit_cell", "edit_index",
+            "copy", "paste", "delete", "undo", "redo", "right_click_popup_menu"
         )
 
         self.sheet.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -650,7 +650,12 @@ class ExcelMasterChartApp:
         menu.add_command(label="Insert 10 Rows Below", command=lambda: self.insert_rows_below(10))
         menu.add_separator()
 
+        menu.add_command(label="Insert Column Before", command=self.insert_column_before)
+        menu.add_command(label="Insert Column After", command=self.insert_column_after)
+        menu.add_separator()
+
         menu.add_command(label="Delete Selected Row(s)", command=self.delete_selected_rows)
+        menu.add_command(label="Delete Selected Column(s)", command=self.delete_selected_columns)
         menu.add_command(label="Delete All Empty Rows", command=self.delete_empty_rows)
         menu.add_separator()
 
@@ -749,6 +754,96 @@ class ExcelMasterChartApp:
 
             self.sheet.set_sheet_data(data)
             self.mark_unsaved()
+
+    def insert_column_before(self):
+        """Insert column before selected column"""
+        selected = self.sheet.get_currently_selected()
+        if selected and selected.column is not None:
+            col_idx = selected.column
+
+            # Insert into column headers
+            new_col_name = f"Column {len(self.current_columns) + 1}"
+            self.current_columns.insert(col_idx, new_col_name)
+            self.update_columns_display()
+
+            # Insert into data
+            data = self.sheet.get_sheet_data()
+            for row in data:
+                row.insert(col_idx, "")
+
+            # Recreate sheet
+            self.setup_sheet()
+            self.sheet.set_sheet_data(data)
+            self.mark_unsaved()
+        else:
+            messagebox.showinfo("No Column Selected", "Please select a column first.")
+
+    def insert_column_after(self):
+        """Insert column after selected column"""
+        selected = self.sheet.get_currently_selected()
+        if selected and selected.column is not None:
+            col_idx = selected.column + 1
+
+            # Insert into column headers
+            new_col_name = f"Column {len(self.current_columns) + 1}"
+            self.current_columns.insert(col_idx, new_col_name)
+            self.update_columns_display()
+
+            # Insert into data
+            data = self.sheet.get_sheet_data()
+            for row in data:
+                row.insert(col_idx, "")
+
+            # Recreate sheet
+            self.setup_sheet()
+            self.sheet.set_sheet_data(data)
+            self.mark_unsaved()
+        else:
+            messagebox.showinfo("No Column Selected", "Please select a column first.")
+
+    def delete_selected_columns(self):
+        """Delete currently selected columns"""
+        selected = self.sheet.get_all_selection_boxes()
+        if selected:
+            if len(self.current_columns) <= 1:
+                messagebox.showwarning("Cannot Delete", "Cannot delete all columns. At least one column must remain.")
+                return
+
+            columns_to_delete = set()
+
+            for box in selected:
+                for col in range(box.from_c, box.upto_c):
+                    columns_to_delete.add(col)
+
+            if len(columns_to_delete) >= len(self.current_columns):
+                messagebox.showwarning("Cannot Delete", "Cannot delete all columns. At least one column must remain.")
+                return
+
+            # Confirm deletion
+            if not messagebox.askyesno("Delete Columns",
+                                      f"Are you sure you want to delete {len(columns_to_delete)} column(s)?"):
+                return
+
+            # Delete columns from headers
+            for col_idx in sorted(columns_to_delete, reverse=True):
+                if col_idx < len(self.current_columns):
+                    del self.current_columns[col_idx]
+
+            self.update_columns_display()
+
+            # Delete columns from data
+            data = self.sheet.get_sheet_data()
+            for row in data:
+                for col_idx in sorted(columns_to_delete, reverse=True):
+                    if col_idx < len(row):
+                        del row[col_idx]
+
+            # Recreate sheet
+            self.setup_sheet()
+            self.sheet.set_sheet_data(data)
+            self.mark_unsaved()
+        else:
+            messagebox.showinfo("No Selection", "Please select column(s) to delete.")
 
     # ========================================================================
     # UNDO/REDO
@@ -901,9 +996,8 @@ class ExcelMasterChartApp:
         self.mark_unsaved()
         self.update_row_count()
 
-        # Update live preview if enabled
-        if self.live_preview_var.get():
-            self.apply_live_colors()
+        # Always auto-apply colors after cell modification (real-time color update)
+        self.apply_live_colors()
 
     def check_crash_recovery(self):
         """Check for auto-save file and offer recovery"""
@@ -1254,10 +1348,10 @@ class ExcelMasterChartApp:
             cell.fill = PatternFill(start_color=color_set['header'], end_color=color_set['header'], fill_type='solid')
             cell.alignment = Alignment(horizontal='center', vertical='center')
             cell.border = Border(
-                left=Side(style='thin', color='000000'),
-                right=Side(style='thin', color='000000'),
-                top=Side(style='thin', color='000000'),
-                bottom=Side(style='thin', color='000000')
+                left=Side(style='thin', color='FFFFFF'),
+                right=Side(style='thin', color='FFFFFF'),
+                top=Side(style='thin', color='FFFFFF'),
+                bottom=Side(style='thin', color='FFFFFF')
             )
             ws.row_dimensions[current_row].height = 25
 
@@ -1268,10 +1362,10 @@ class ExcelMasterChartApp:
             ws['A' + str(current_row)].fill = PatternFill(start_color=color_set['row_label'],
                                                            end_color=color_set['row_label'], fill_type='solid')
             ws['A' + str(current_row)].border = Border(
-                left=Side(style='thin', color='000000'),
-                right=Side(style='thin', color='000000'),
-                top=Side(style='thin', color='000000'),
-                bottom=Side(style='thin', color='000000')
+                left=Side(style='thin', color='FFFFFF'),
+                right=Side(style='thin', color='FFFFFF'),
+                top=Side(style='thin', color='FFFFFF'),
+                bottom=Side(style='thin', color='FFFFFF')
             )
 
             for idx, drug in enumerate(drugs, 1):
@@ -1282,10 +1376,10 @@ class ExcelMasterChartApp:
                 cell.fill = PatternFill(start_color=color_set['main'], end_color=color_set['main'], fill_type='solid')
                 cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
                 cell.border = Border(
-                    left=Side(style='thin', color='000000'),
-                    right=Side(style='thin', color='000000'),
-                    top=Side(style='thin', color='000000'),
-                    bottom=Side(style='thin', color='000000')
+                    left=Side(style='thin', color='FFFFFF'),
+                    right=Side(style='thin', color='FFFFFF'),
+                    top=Side(style='thin', color='FFFFFF'),
+                    bottom=Side(style='thin', color='FFFFFF')
                 )
                 ws.column_dimensions[col_letter].width = 25
 
@@ -1302,10 +1396,10 @@ class ExcelMasterChartApp:
                     cell.fill = PatternFill(start_color=color_set['row_label'], end_color=color_set['row_label'], fill_type='solid')
                     cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
                     cell.border = Border(
-                        left=Side(style='thin', color='000000'),
-                        right=Side(style='thin', color='000000'),
-                        top=Side(style='thin', color='000000'),
-                        bottom=Side(style='thin', color='000000')
+                        left=Side(style='thin', color='FFFFFF'),
+                        right=Side(style='thin', color='FFFFFF'),
+                        top=Side(style='thin', color='FFFFFF'),
+                        bottom=Side(style='thin', color='FFFFFF')
                     )
 
                     # Data for each drug
@@ -1323,10 +1417,10 @@ class ExcelMasterChartApp:
                         cell.fill = PatternFill(start_color=color_set['main'], end_color=color_set['main'], fill_type='solid')
                         cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
                         cell.border = Border(
-                            left=Side(style='thin', color='000000'),
-                            right=Side(style='thin', color='000000'),
-                            top=Side(style='thin', color='000000'),
-                            bottom=Side(style='thin', color='000000')
+                            left=Side(style='thin', color='FFFFFF'),
+                            right=Side(style='thin', color='FFFFFF'),
+                            top=Side(style='thin', color='FFFFFF'),
+                            bottom=Side(style='thin', color='FFFFFF')
                         )
 
                     ws.row_dimensions[current_row].height = 30
@@ -1340,10 +1434,10 @@ class ExcelMasterChartApp:
             cell.fill = PatternFill(start_color=MNEMONIC_BG, end_color=MNEMONIC_BG, fill_type='solid')
             cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
             cell.border = Border(
-                left=Side(style='thin', color='000000'),
-                right=Side(style='thin', color='000000'),
-                top=Side(style='thin', color='000000'),
-                bottom=Side(style='thin', color='000000')
+                left=Side(style='thin', color='FFFFFF'),
+                right=Side(style='thin', color='FFFFFF'),
+                top=Side(style='thin', color='FFFFFF'),
+                bottom=Side(style='thin', color='FFFFFF')
             )
             ws.row_dimensions[current_row].height = 40
 
