@@ -264,7 +264,7 @@ class ExcelMasterChartApp:
 
     def create_column_setup_section(self, parent):
         """Create Section 1: Column Setup"""
-        setup_frame = ttk.LabelFrame(parent, text="📊 Section 1: Column Setup", padding="10")
+        setup_frame = ttk.LabelFrame(parent, text="Section 1: Column Setup", padding="10")
         setup_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
 
         # Preset selector
@@ -297,18 +297,9 @@ class ExcelMasterChartApp:
         )
         self.edit_headers_btn.pack(side=tk.LEFT, padx=10, pady=5)
 
-        # Column display
-        columns_display_frame = ttk.Frame(setup_frame)
-        columns_display_frame.pack(fill=tk.X, pady=(5, 0))
-
-        ttk.Label(columns_display_frame, text="Current Columns:").pack(side=tk.LEFT, anchor=tk.N, pady=5)
-        self.columns_text = tk.Text(columns_display_frame, height=2, width=90, wrap=tk.WORD)
-        self.columns_text.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 0), pady=5)
-        self.columns_text.config(state=tk.DISABLED)
-
     def create_data_grid_section(self, parent):
         """Create Section 2: Excel-Style Data Grid"""
-        grid_frame = ttk.LabelFrame(parent, text="📝 Section 2: Excel-Style Data Grid", padding="10")
+        grid_frame = ttk.LabelFrame(parent, text="Section 2: Data Grid", padding="10")
         grid_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
         grid_frame.columnconfigure(0, weight=1)
         grid_frame.rowconfigure(1, weight=1)
@@ -355,39 +346,27 @@ class ExcelMasterChartApp:
 
     def create_export_section(self, parent):
         """Create Section 3: Export Controls"""
-        export_frame = ttk.LabelFrame(parent, text="💾 Section 3: Export Options", padding="10")
+        export_frame = ttk.LabelFrame(parent, text="Section 3: Export", padding="10")
         export_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         export_frame.columnconfigure(0, weight=1)
 
         # Export format selection
-        format_frame = ttk.LabelFrame(export_frame, text="Export Format", padding="10")
+        format_frame = ttk.Frame(export_frame)
         format_frame.pack(fill=tk.X, pady=(0, 10))
 
         ttk.Radiobutton(
             format_frame,
-            text="Excel Master Chart (Single Sheet) - Quick reference table",
+            text="Excel Master Chart (Single Sheet)",
             variable=self.export_format,
             value="master_chart"
         ).pack(anchor=tk.W, padx=10, pady=2)
 
         ttk.Radiobutton(
             format_frame,
-            text="Excel Comprehensive Drug Chart (4 Tabs) - Detailed analysis with comparisons",
+            text="Excel Comprehensive Chart (4 Tabs)",
             variable=self.export_format,
             value="comprehensive"
         ).pack(anchor=tk.W, padx=10, pady=2)
-
-        # Output settings
-        output_frame = ttk.Frame(export_frame)
-        output_frame.pack(fill=tk.X, pady=(0, 10))
-        output_frame.columnconfigure(1, weight=1)  # Make column 1 expandable
-
-        ttk.Label(output_frame, text="Filename:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        ttk.Entry(output_frame, textvariable=self.output_filename).grid(row=0, column=1, sticky=(tk.W, tk.E), padx=10, pady=5)
-
-        ttk.Label(output_frame, text="Location:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        ttk.Entry(output_frame, textvariable=self.output_directory).grid(row=1, column=1, sticky=(tk.W, tk.E), padx=10, pady=5)
-        ttk.Button(output_frame, text="Browse...", command=self.browse_directory).grid(row=1, column=2, sticky=tk.W, pady=5)
 
         # Action buttons
         button_frame = ttk.Frame(export_frame)
@@ -400,7 +379,7 @@ class ExcelMasterChartApp:
         # Export button (prominent)
         export_btn = ttk.Button(
             button_frame,
-            text="🚀 Export to Excel",
+            text="Export to Excel",
             command=self.export_to_excel
         )
         export_btn.pack(side=tk.RIGHT, padx=5)
@@ -432,11 +411,11 @@ class ExcelMasterChartApp:
             empty_vertical=0
         )
 
-        # Enable all bindings
+        # Enable all bindings including header editing
         self.sheet.enable_bindings(
             "single_select", "drag_select", "column_width_resize",
             "double_click_column_resize", "row_height_resize",
-            "column_select", "row_select", "edit_cell", "edit_index",
+            "column_select", "row_select", "edit_cell", "edit_index", "edit_header",
             "copy", "paste", "delete", "undo", "redo", "right_click_popup_menu"
         )
 
@@ -448,6 +427,9 @@ class ExcelMasterChartApp:
 
         # Bind cell changes for unsaved indicator
         self.sheet.bind("<<SheetModified>>", self.on_sheet_modified)
+
+        # Bind header changes to sync column names
+        self.sheet.bind("<<SheetModified>>", self.sync_column_headers, add=True)
 
         # Update row count
         self.update_row_count()
@@ -577,11 +559,17 @@ class ExcelMasterChartApp:
         ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     def update_columns_display(self):
-        """Update the column display text"""
-        self.columns_text.config(state=tk.NORMAL)
-        self.columns_text.delete("1.0", tk.END)
-        self.columns_text.insert("1.0", ", ".join(self.current_columns))
-        self.columns_text.config(state=tk.DISABLED)
+        """Update the column display (no-op since we removed the display widget)"""
+        pass
+
+    def sync_column_headers(self, event=None):
+        """Sync column headers from sheet to internal list"""
+        try:
+            headers = self.sheet.headers()
+            if headers:
+                self.current_columns = list(headers)
+        except:
+            pass
 
     # ========================================================================
     # ROW MANAGEMENT
@@ -1171,16 +1159,18 @@ class ExcelMasterChartApp:
             messagebox.showwarning("No Data", "Please add some data before exporting.")
             return
 
-        if not self.output_filename.get():
-            messagebox.showwarning("No Filename", "Please enter an output filename.")
-            return
+        # Show file save dialog
+        output_path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            initialdir=self.output_directory.get(),
+            initialfile=self.output_filename.get()
+        )
 
-        # Ensure .xlsx extension
-        filename = self.output_filename.get()
-        if not filename.endswith(".xlsx"):
-            filename += ".xlsx"
+        if not output_path:
+            return  # User cancelled
 
-        output_path = Path(self.output_directory.get()) / filename
+        output_path = Path(output_path)
 
         try:
             wb = Workbook()
@@ -1279,12 +1269,18 @@ class ExcelMasterChartApp:
             messagebox.showwarning("No Data", "Please add some data before exporting.")
             return
 
-        # Ensure .xlsx extension
-        filename = self.output_filename.get()
-        if not filename.endswith(".xlsx"):
-            filename += ".xlsx"
+        # Show file save dialog
+        output_path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            initialdir=self.output_directory.get(),
+            initialfile=self.output_filename.get()
+        )
 
-        output_path = Path(self.output_directory.get()) / filename
+        if not output_path:
+            return  # User cancelled
+
+        output_path = Path(output_path)
 
         try:
             # Calculate color assignments
@@ -1429,7 +1425,7 @@ class ExcelMasterChartApp:
             # Mnemonic row
             ws.merge_cells(f'A{current_row}:{end_col}{current_row}')
             cell = ws[f'A{current_row}']
-            cell.value = f"💡 MEMORY TRICKS & MNEMONICS\n[Add {drug_class} mnemonics here]"
+            cell.value = f"MEMORY TRICKS & MNEMONICS\n[Add {drug_class} mnemonics here]"
             cell.font = Font(size=10, italic=True, color='000000')
             cell.fill = PatternFill(start_color=MNEMONIC_BG, end_color=MNEMONIC_BG, fill_type='solid')
             cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
@@ -1601,7 +1597,7 @@ class ExcelMasterChartApp:
 
             # Clinical pearls box
             ws.merge_cells(f'A{current_row}:F{current_row + 2}')
-            ws[f'A{current_row}'] = f"🎯 CLINICAL PEARLS - {drug_class}\n\n[Add key clinical tips and must-know facts here]"
+            ws[f'A{current_row}'] = f"CLINICAL PEARLS - {drug_class}\n\n[Add key clinical tips and must-know facts here]"
             ws[f'A{current_row}'].font = Font(size=11, color='000000')
             ws[f'A{current_row}'].fill = PatternFill(start_color=CLINICAL_PEARL_BG,
                                                       end_color=CLINICAL_PEARL_BG, fill_type='solid')
@@ -1612,7 +1608,7 @@ class ExcelMasterChartApp:
 
             # Mnemonic box
             ws.merge_cells(f'A{current_row}:F{current_row + 1}')
-            ws[f'A{current_row}'] = f"💡 MNEMONICS\n\n[Add {drug_class} mnemonics here]"
+            ws[f'A{current_row}'] = f"MNEMONICS\n\n[Add {drug_class} mnemonics here]"
             ws[f'A{current_row}'].font = Font(size=11, italic=True, color='000000')
             ws[f'A{current_row}'].fill = PatternFill(start_color=MNEMONIC_BG,
                                                       end_color=MNEMONIC_BG, fill_type='solid')
