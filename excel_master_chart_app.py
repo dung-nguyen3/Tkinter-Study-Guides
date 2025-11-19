@@ -125,6 +125,7 @@ class ExcelMasterChartApp:
         self.root = root
         self.root.title("Excel Master Chart Creator v2.5")
         self.root.geometry("1400x800")
+        self.root.minsize(1200, 700)  # Set minimum window size
 
         # Data storage
         self.current_columns = []
@@ -199,6 +200,8 @@ class ExcelMasterChartApp:
         edit_menu.add_command(label="Paste", accelerator="Cmd+V")
         edit_menu.add_separator()
         edit_menu.add_command(label="Select All", accelerator="Cmd+A")
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Edit Column Headers...", command=self.edit_column_headers)
         edit_menu.add_command(label="Clear All Data", command=self.clear_all_data)
 
         # View menu
@@ -281,6 +284,14 @@ class ExcelMasterChartApp:
         )
         self.custom_btn.pack(side=tk.LEFT, padx=10, pady=5)
 
+        # Edit column headers button
+        self.edit_headers_btn = ttk.Button(
+            preset_frame,
+            text="Edit Column Headers...",
+            command=self.edit_column_headers
+        )
+        self.edit_headers_btn.pack(side=tk.LEFT, padx=10, pady=5)
+
         # Column display
         columns_display_frame = ttk.Frame(setup_frame)
         columns_display_frame.pack(fill=tk.X, pady=(5, 0))
@@ -341,6 +352,7 @@ class ExcelMasterChartApp:
         """Create Section 3: Export Controls"""
         export_frame = ttk.LabelFrame(parent, text="💾 Section 3: Export Options", padding="10")
         export_frame.grid(row=3, column=0, sticky=(tk.W, tk.E))
+        export_frame.columnconfigure(0, weight=1)
 
         # Export format selection
         format_frame = ttk.LabelFrame(export_frame, text="Export Format", padding="10")
@@ -363,12 +375,13 @@ class ExcelMasterChartApp:
         # Output settings
         output_frame = ttk.Frame(export_frame)
         output_frame.pack(fill=tk.X, pady=(0, 10))
+        output_frame.columnconfigure(1, weight=1)  # Make column 1 expandable
 
         ttk.Label(output_frame, text="Filename:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        ttk.Entry(output_frame, textvariable=self.output_filename, width=50).grid(row=0, column=1, sticky=tk.W, padx=10, pady=5)
+        ttk.Entry(output_frame, textvariable=self.output_filename).grid(row=0, column=1, sticky=(tk.W, tk.E), padx=10, pady=5)
 
         ttk.Label(output_frame, text="Location:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        ttk.Entry(output_frame, textvariable=self.output_directory, width=60).grid(row=1, column=1, sticky=tk.W, padx=10, pady=5)
+        ttk.Entry(output_frame, textvariable=self.output_directory).grid(row=1, column=1, sticky=(tk.W, tk.E), padx=10, pady=5)
         ttk.Button(output_frame, text="Browse...", command=self.browse_directory).grid(row=1, column=2, sticky=tk.W, pady=5)
 
         # Action buttons
@@ -400,12 +413,11 @@ class ExcelMasterChartApp:
         # Create initial data (50 empty rows)
         initial_data = [[""] * len(self.current_columns) for _ in range(50)]
 
-        # Create sheet
+        # Create sheet (no fixed height - will expand with window)
         self.sheet = Sheet(
             self.sheet_container,
             data=initial_data,
             headers=self.current_columns,
-            height=450,
             theme="light blue",
             font=("Calibri", 11, "normal"),
             header_font=("Calibri", 11, "bold"),
@@ -485,6 +497,79 @@ class ExcelMasterChartApp:
                 messagebox.showwarning("Invalid Input", "Please enter at least one column name.")
 
         ttk.Button(dialog, text="Save", command=save_custom).pack(pady=10)
+
+    def edit_column_headers(self):
+        """Open dialog to edit current column headers"""
+        if not self.current_columns:
+            messagebox.showwarning("No Columns", "Please select a preset or define custom columns first.")
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Edit Column Headers")
+        dialog.geometry("450x400")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        ttk.Label(dialog, text="Edit column names (one per line):", font=("", 10, "bold")).pack(pady=10, padx=10)
+        ttk.Label(dialog, text="Changes will be applied to the current data grid.", font=("", 9, "italic")).pack(padx=10)
+
+        text = tk.Text(dialog, height=18, width=50)
+        text.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+
+        # Pre-populate with current column names
+        text.insert("1.0", "\n".join(self.current_columns))
+
+        def save_edited_headers():
+            content = text.get("1.0", tk.END).strip()
+            if content:
+                new_columns = [line.strip() for line in content.split("\n") if line.strip()]
+                if new_columns:
+                    # Check if number of columns changed
+                    if len(new_columns) != len(self.current_columns):
+                        result = messagebox.askyesno(
+                            "Column Count Changed",
+                            f"You changed the number of columns from {len(self.current_columns)} to {len(new_columns)}.\n\n"
+                            "This may result in data loss if you reduced the number of columns.\n\n"
+                            "Do you want to continue?"
+                        )
+                        if not result:
+                            return
+
+                    # Get current data
+                    current_data = self.sheet.get_sheet_data() if self.sheet else []
+
+                    # Update columns
+                    old_col_count = len(self.current_columns)
+                    self.current_columns = new_columns
+                    self.update_columns_display()
+
+                    # Adjust data to match new column count
+                    if len(new_columns) > old_col_count:
+                        # Add empty columns
+                        current_data = [row + [""] * (len(new_columns) - len(row)) for row in current_data]
+                    elif len(new_columns) < old_col_count:
+                        # Truncate columns
+                        current_data = [row[:len(new_columns)] for row in current_data]
+
+                    # Recreate sheet with new headers
+                    self.setup_sheet()
+
+                    # Restore data
+                    if current_data:
+                        self.sheet.set_sheet_data(current_data)
+
+                    self.mark_unsaved()
+                    dialog.destroy()
+                    messagebox.showinfo("Success", "Column headers updated successfully!")
+                else:
+                    messagebox.showwarning("Invalid Input", "Please enter at least one column name.")
+            else:
+                messagebox.showwarning("Invalid Input", "Please enter at least one column name.")
+
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=10)
+        ttk.Button(button_frame, text="Save Changes", command=save_edited_headers).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     def update_columns_display(self):
         """Update the column display text"""
