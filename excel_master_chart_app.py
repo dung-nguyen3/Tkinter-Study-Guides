@@ -1056,9 +1056,9 @@ class ExcelMasterChartApp:
                         cell.alignment = data_alignment
                         cell.border = white_border
 
-                        # First column bold
+                        # First column bold and size 12
                         if col_idx == 1:
-                            cell.font = Font(name="Calibri", size=10, bold=True, color=DATA_FONT_COLOR[1:])
+                            cell.font = Font(name="Calibri", size=12, bold=True, color=DATA_FONT_COLOR[1:])
                         else:
                             cell.font = Font(name="Calibri", size=10, color=DATA_FONT_COLOR[1:])
 
@@ -1148,15 +1148,7 @@ class ExcelMasterChartApp:
         """Create Tab 1: Drug Details (transposed tables by class)"""
         ws = wb.create_sheet("Drug Details")
 
-        # Title
-        ws.merge_cells('A1:F1')
-        ws['A1'] = "DRUG DETAILS - BY CLASS"
-        ws['A1'].font = Font(bold=True, size=16, color='FFFFFF')
-        ws['A1'].fill = PatternFill(start_color=MAIN_TITLE_COLOR, end_color=MAIN_TITLE_COLOR, fill_type='solid')
-        ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-        ws.row_dimensions[1].height = 25
-
-        current_row = 3
+        current_row = 1
 
         for drug_class, drugs in grouped_data.items():
             color_set = color_map.get(drug_class, get_color_set(0))
@@ -1168,9 +1160,15 @@ class ExcelMasterChartApp:
 
             cell = ws[f'A{current_row}']
             cell.value = drug_class.upper()
-            cell.font = Font(bold=True, size=14, color='FFFFFF')
+            cell.font = Font(bold=True, size=16, color='FFFFFF')
             cell.fill = PatternFill(start_color=color_set['header'], end_color=color_set['header'], fill_type='solid')
             cell.alignment = Alignment(horizontal='center', vertical='center')
+            cell.border = Border(
+                left=Side(style='thin', color='000000'),
+                right=Side(style='thin', color='000000'),
+                top=Side(style='thin', color='000000'),
+                bottom=Side(style='thin', color='000000')
+            )
             ws.row_dimensions[current_row].height = 25
 
             current_row += 1
@@ -1179,14 +1177,26 @@ class ExcelMasterChartApp:
             ws['A' + str(current_row)] = ""  # Empty corner cell
             ws['A' + str(current_row)].fill = PatternFill(start_color=color_set['row_label'],
                                                            end_color=color_set['row_label'], fill_type='solid')
+            ws['A' + str(current_row)].border = Border(
+                left=Side(style='thin', color='000000'),
+                right=Side(style='thin', color='000000'),
+                top=Side(style='thin', color='000000'),
+                bottom=Side(style='thin', color='000000')
+            )
 
             for idx, drug in enumerate(drugs, 1):
                 col_letter = get_column_letter(idx + 1)
                 cell = ws[f'{col_letter}{current_row}']
                 cell.value = drug[0] if drug else ""  # Drug name
-                cell.font = Font(bold=True, size=12, color='000000')
+                cell.font = Font(bold=True, size=14, color='000000')
                 cell.fill = PatternFill(start_color=color_set['main'], end_color=color_set['main'], fill_type='solid')
                 cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                cell.border = Border(
+                    left=Side(style='thin', color='000000'),
+                    right=Side(style='thin', color='000000'),
+                    top=Side(style='thin', color='000000'),
+                    bottom=Side(style='thin', color='000000')
+                )
                 ws.column_dimensions[col_letter].width = 25
 
             current_row += 1
@@ -1201,6 +1211,12 @@ class ExcelMasterChartApp:
                     cell.font = Font(bold=True, size=11, color='000000')
                     cell.fill = PatternFill(start_color=color_set['row_label'], end_color=color_set['row_label'], fill_type='solid')
                     cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+                    cell.border = Border(
+                        left=Side(style='thin', color='000000'),
+                        right=Side(style='thin', color='000000'),
+                        top=Side(style='thin', color='000000'),
+                        bottom=Side(style='thin', color='000000')
+                    )
 
                     # Data for each drug
                     for drug_idx, drug in enumerate(drugs, 1):
@@ -1216,6 +1232,12 @@ class ExcelMasterChartApp:
                         cell.font = Font(size=10, color='000000')
                         cell.fill = PatternFill(start_color=color_set['main'], end_color=color_set['main'], fill_type='solid')
                         cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+                        cell.border = Border(
+                            left=Side(style='thin', color='000000'),
+                            right=Side(style='thin', color='000000'),
+                            top=Side(style='thin', color='000000'),
+                            bottom=Side(style='thin', color='000000')
+                        )
 
                     ws.row_dimensions[current_row].height = 30
                     current_row += 1
@@ -1227,6 +1249,12 @@ class ExcelMasterChartApp:
             cell.font = Font(size=10, italic=True, color='000000')
             cell.fill = PatternFill(start_color=MNEMONIC_BG, end_color=MNEMONIC_BG, fill_type='solid')
             cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+            cell.border = Border(
+                left=Side(style='thin', color='000000'),
+                right=Side(style='thin', color='000000'),
+                top=Side(style='thin', color='000000'),
+                bottom=Side(style='thin', color='000000')
+            )
             ws.row_dimensions[current_row].height = 40
 
             current_row += 3  # Blank rows
