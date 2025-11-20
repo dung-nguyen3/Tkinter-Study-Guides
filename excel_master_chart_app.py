@@ -32,18 +32,28 @@ from openpyxl.utils import get_column_letter
 # COLOR CONSTANTS - 3-Shade System for Professional Gradients
 # ============================================================================
 
-# 10-color sets with 3 shades each (header/main/row_label)
+# 10-color sets with 3 shades each (header/main/row_label) - IN ORDER
+# 1. Ice Blue - General topics
+# 2. Seafoam - Normal findings
+# 3. Light Orchid - Special topics
+# 4. Champagne - Warnings/cautions
+# 5. Sky Blue - Diagnostic
+# 6. Pale Azure - Alternative blue
+# 7. Blush Pink - Important alerts
+# 8. Soft Lilac - Alternative purple
+# 9. Soft Tangerine - Highlights
+# 10. Powder Blue - Alternative blue
 COLOR_SETS = [
-    {'header': 'B4C6E7', 'main': 'D9E2F3', 'row_label': 'C5D3ED'},  # Ice Blue
-    {'header': 'A8CCA8', 'main': 'C8E6C9', 'row_label': 'B8D9B9'},  # Seafoam
-    {'header': 'B8A4D0', 'main': 'D1C4E9', 'row_label': 'C4B4DC'},  # Light Orchid
-    {'header': 'E0D0B0', 'main': 'F7E7CE', 'row_label': 'EBDBBF'},  # Champagne
-    {'header': '9DC3E6', 'main': 'BDD7EE', 'row_label': 'AECDEA'},  # Sky Blue
-    {'header': 'D0E8FF', 'main': 'F0F8FF', 'row_label': 'E0F0FF'},  # Pale Azure
-    {'header': 'E8C4CC', 'main': 'FCE4EC', 'row_label': 'F2D4DC'},  # Blush Pink
-    {'header': 'D0C8DC', 'main': 'EDE7F6', 'row_label': 'DED7E9'},  # Soft Lilac
-    {'header': 'E0C8B0', 'main': 'FFE8D6', 'row_label': 'EFD8C3'},  # Soft Tangerine
-    {'header': 'A0C4E8', 'main': 'BBDEFB', 'row_label': 'ADD1F1'},  # Powder Blue
+    {'header': 'B3D4ED', 'main': 'E3F2FD', 'row_label': 'CBE7FA'},  # 1. Ice Blue - General topics
+    {'header': 'A8CCA8', 'main': 'C8E6C9', 'row_label': 'B8D9B9'},  # 2. Seafoam - Normal findings
+    {'header': 'B8A4D0', 'main': 'D1C4E9', 'row_label': 'C4B4DC'},  # 3. Light Orchid - Special topics
+    {'header': 'E0D0B0', 'main': 'F7E7CE', 'row_label': 'EBDBBF'},  # 4. Champagne - Warnings/cautions
+    {'header': '9DC3E6', 'main': 'BDD7EE', 'row_label': 'AECDEA'},  # 5. Sky Blue - Diagnostic
+    {'header': 'D0E8FF', 'main': 'F0F8FF', 'row_label': 'E0F0FF'},  # 6. Pale Azure - Alternative blue
+    {'header': 'E8C4CC', 'main': 'FCE4EC', 'row_label': 'F2D4DC'},  # 7. Blush Pink - Important alerts
+    {'header': 'D0C8DC', 'main': 'EDE7F6', 'row_label': 'DED7E9'},  # 8. Soft Lilac - Alternative purple
+    {'header': 'E0C8B0', 'main': 'FFE8D6', 'row_label': 'EFD8C3'},  # 9. Soft Tangerine - Highlights
+    {'header': 'A0C4E8', 'main': 'BBDEFB', 'row_label': 'ADD1F1'},  # 10. Powder Blue - Alternative blue
 ]
 
 # Special purpose colors
@@ -983,17 +993,29 @@ class ExcelMasterChartApp:
         data = self.sheet.get_sheet_data()
         color_map = self.calculate_color_assignments_from_data(data)
 
+        # Clear existing highlights first
+        try:
+            self.sheet.dehighlight_all()
+        except:
+            pass
+
+        # Apply colors to ALL rows in each drug class
         last_group = None
+        current_color = None
+
         for row_idx, row_data in enumerate(data):
             if row_data and row_data[0]:  # Has value in first column
                 group_name = str(row_data[0]).strip()
-                if group_name and group_name != last_group:
-                    last_group = group_name
-                    if group_name in color_map:
-                        color_set = color_map[group_name]
-                        rgb = hex_to_rgb(color_set['main'])
+                if group_name:
+                    # Update current color when we encounter a new group
+                    if group_name != last_group:
+                        last_group = group_name
+                        current_color = color_map.get(group_name)
+
+                    # Apply color to this row
+                    if current_color:
                         try:
-                            self.sheet.highlight_rows([row_idx], bg=f"#{color_set['main']}")
+                            self.sheet.highlight_rows([row_idx], bg=f"#{current_color['main']}")
                         except:
                             pass
 
