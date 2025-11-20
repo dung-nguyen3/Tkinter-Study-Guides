@@ -275,6 +275,9 @@ class ExcelMasterChartApp:
         self.search_results = []  # List of matching row indices
         self.current_search_index = 0
 
+        # Ribbon state
+        self.ribbon_expanded = tk.BooleanVar(value=True)  # Start expanded
+
         # Setup UI
         self.create_menu_bar()
         self.setup_ui()
@@ -385,11 +388,29 @@ class ExcelMasterChartApp:
 
     def create_ribbon(self):
         """Create Excel-style ribbon toolbar with tabs"""
-        ribbon_container = ttk.Frame(self.root, relief=tk.RAISED, borderwidth=1)
-        ribbon_container.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=0, pady=0)
+        # Main ribbon container
+        ribbon_wrapper = ttk.Frame(self.root)
+        ribbon_wrapper.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=0, pady=0)
+
+        # Toggle button bar
+        toggle_bar = ttk.Frame(ribbon_wrapper, relief=tk.RAISED, borderwidth=1)
+        toggle_bar.pack(fill=tk.X)
+
+        ttk.Button(
+            toggle_bar,
+            text="▼ Hide Ribbon" if self.ribbon_expanded.get() else "▶ Show Ribbon",
+            command=self.toggle_ribbon,
+            width=15
+        ).pack(side=tk.LEFT, padx=5, pady=2)
+
+        self.toggle_button = toggle_bar.winfo_children()[0]  # Store reference
+
+        # Ribbon content container
+        self.ribbon_container = ttk.Frame(ribbon_wrapper, relief=tk.RAISED, borderwidth=1)
+        self.ribbon_container.pack(fill=tk.BOTH, expand=True)
 
         # Create notebook for tabbed ribbon
-        self.ribbon_notebook = ttk.Notebook(ribbon_container)
+        self.ribbon_notebook = ttk.Notebook(self.ribbon_container)
         self.ribbon_notebook.pack(fill=tk.BOTH, expand=True)
 
         # HOME TAB
@@ -471,6 +492,22 @@ class ExcelMasterChartApp:
             width=20
         )
         export_btn.pack(pady=20, padx=10)
+
+    def toggle_ribbon(self):
+        """Toggle ribbon visibility"""
+        if self.ribbon_expanded.get():
+            # Collapse ribbon
+            self.ribbon_container.pack_forget()
+            self.toggle_button.config(text="▶ Show Ribbon")
+            self.ribbon_expanded.set(False)
+        else:
+            # Expand ribbon
+            self.ribbon_container.pack(fill=tk.BOTH, expand=True)
+            self.toggle_button.config(text="▼ Hide Ribbon")
+            self.ribbon_expanded.set(True)
+
+        # Force window to update layout
+        self.root.update_idletasks()
 
     def create_data_grid_ribbon_style(self):
         """Create maximized data grid for ribbon interface"""
@@ -677,7 +714,8 @@ class ExcelMasterChartApp:
             "single_select", "drag_select", "column_width_resize",
             "double_click_column_resize", "row_height_resize",
             "column_select", "row_select", "edit_cell", "edit_index", "edit_header",
-            "copy", "paste", "delete", "undo", "redo", "right_click_popup_menu"
+            "copy", "paste", "delete", "undo", "redo"
+            # Note: right_click_popup_menu disabled to use custom context menu
         )
 
         self.sheet.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -2318,22 +2356,7 @@ class ExcelMasterChartApp:
                     ws.row_dimensions[current_row].height = 30
                     current_row += 1
 
-            # Mnemonic row
-            ws.merge_cells(f'A{current_row}:{end_col}{current_row}')
-            cell = ws[f'A{current_row}']
-            cell.value = f"MEMORY TRICKS & MNEMONICS\n[Add {drug_class} mnemonics here]"
-            cell.font = Font(size=10, italic=True, color='000000')
-            cell.fill = PatternFill(start_color=MNEMONIC_BG, end_color=MNEMONIC_BG, fill_type='solid')
-            cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
-            cell.border = Border(
-                left=Side(style='thin', color='FFFFFF'),
-                right=Side(style='thin', color='FFFFFF'),
-                top=Side(style='thin', color='FFFFFF'),
-                bottom=Side(style='thin', color='FFFFFF')
-            )
-            ws.row_dimensions[current_row].height = 40
-
-            current_row += 3  # Blank rows
+            current_row += 2  # Blank rows between drug classes
 
         # Set column A width
         ws.column_dimensions['A'].width = 25
@@ -2399,7 +2422,7 @@ class ExcelMasterChartApp:
                             if val:
                                 values.append(str(val))
 
-                    ws[f'B{current_row}'] = "\n".join(values) if values else "(Not specified)"
+                    ws[f'B{current_row}'] = "\n".join(values) if values else ""
                     ws[f'B{current_row}'].font = Font(size=10)
                     ws[f'B{current_row}'].fill = PatternFill(start_color=color_set['main'],
                                                               end_color=color_set['main'], fill_type='solid')
