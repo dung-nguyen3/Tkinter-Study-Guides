@@ -721,8 +721,14 @@ class ExcelMasterChartApp:
         self.sheet.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
         # Bind right-click for context menu
-        self.sheet.bind("<Button-2>", self.show_context_menu)  # macOS right-click
-        self.sheet.bind("<Button-3>", self.show_context_menu)  # Windows/Linux right-click
+        self.sheet.bind("<Button-2>", self.show_context_menu)  # macOS Control+Click
+        self.sheet.bind("<Button-3>", self.show_context_menu)  # macOS/Windows/Linux right-click
+
+        # Bind keyboard shortcuts for delete operations
+        # Mac: Command+Backspace to delete selected rows
+        self.sheet.bind("<Command-BackSpace>", lambda e: self.delete_selected_rows())
+        # Windows/Linux: Ctrl+Delete to delete selected rows
+        self.sheet.bind("<Control-Delete>", lambda e: self.delete_selected_rows())
 
         # Bind cell changes for unsaved indicator
         self.sheet.bind("<<SheetModified>>", self.on_sheet_modified)
@@ -1277,10 +1283,18 @@ class ExcelMasterChartApp:
 
     def show_context_menu(self, event):
         """Show right-click context menu"""
+        # On Mac, ensure we're responding to right-click
+        # Button-2 is typically Control+Click, Button-3 is right-click
         menu = tk.Menu(self.root, tearoff=0)
 
-        menu.add_command(label="Cut", accelerator="Cmd+X", command=lambda: self.sheet.cut())
-        menu.add_command(label="Copy", accelerator="Cmd+C", command=lambda: self.sheet.copy())
+        # Check if anything is selected
+        selected = self.sheet.get_all_selection_boxes()
+        has_selection = bool(selected)
+
+        menu.add_command(label="Cut", accelerator="Cmd+X", command=lambda: self.sheet.cut(),
+                        state=tk.NORMAL if has_selection else tk.DISABLED)
+        menu.add_command(label="Copy", accelerator="Cmd+C", command=lambda: self.sheet.copy(),
+                        state=tk.NORMAL if has_selection else tk.DISABLED)
         menu.add_command(label="Paste", accelerator="Cmd+V", command=lambda: self.sheet.paste())
         menu.add_separator()
 
@@ -1293,14 +1307,19 @@ class ExcelMasterChartApp:
         menu.add_command(label="Insert Column After", command=self.insert_column_after)
         menu.add_separator()
 
-        menu.add_command(label="Delete Selected Row(s)", command=self.delete_selected_rows)
-        menu.add_command(label="Delete Selected Column(s)", command=self.delete_selected_columns)
+        menu.add_command(label="Delete Selected Row(s)", command=self.delete_selected_rows,
+                        state=tk.NORMAL if has_selection else tk.DISABLED)
+        menu.add_command(label="Delete Selected Column(s)", command=self.delete_selected_columns,
+                        state=tk.NORMAL if has_selection else tk.DISABLED)
         menu.add_command(label="Delete All Empty Rows", command=self.delete_empty_rows)
         menu.add_separator()
 
-        menu.add_command(label="Clear Selected Cells", command=lambda: self.sheet.delete_key())
-        menu.add_command(label="Fill Down", command=self.fill_down)
-        menu.add_command(label="Fill Right", command=self.fill_right)
+        menu.add_command(label="Clear Selected Cells", command=lambda: self.clear_selected_cells(),
+                        state=tk.NORMAL if has_selection else tk.DISABLED)
+        menu.add_command(label="Fill Down", command=self.fill_down,
+                        state=tk.NORMAL if has_selection else tk.DISABLED)
+        menu.add_command(label="Fill Right", command=self.fill_right,
+                        state=tk.NORMAL if has_selection else tk.DISABLED)
         menu.add_separator()
         menu.add_command(label="Refresh Auto-Complete", command=self.refresh_autocomplete)
 
@@ -1308,6 +1327,14 @@ class ExcelMasterChartApp:
             menu.tk_popup(event.x_root, event.y_root)
         finally:
             menu.grab_release()
+
+    def clear_selected_cells(self):
+        """Clear content from selected cells"""
+        try:
+            self.sheet.delete_key()
+            self.mark_unsaved()
+        except:
+            pass
 
     def insert_row_above(self):
         """Insert row above selected"""
@@ -1904,8 +1931,25 @@ class ExcelMasterChartApp:
 
         self.update_row_count()
         self.mark_unsaved()
-        messagebox.showinfo("Import Complete",
-                          f"Successfully imported {len(mapped_data)} rows!")
+
+        # Automatically apply color coding if Live Preview is enabled
+        if self.live_preview_var.get():
+            self.apply_live_colors()
+
+        # Ask user if they want to apply colors
+        apply_colors = messagebox.askyesno(
+            "Import Complete",
+            f"Successfully imported {len(mapped_data)} rows!\n\n"
+            "Would you like to apply color coding to drug classes now?"
+        )
+
+        if apply_colors:
+            # Enable live preview and apply colors
+            self.live_preview_var.set(True)
+            self.apply_live_colors()
+            messagebox.showinfo("Colors Applied",
+                              "Color coding has been applied to all drug classes.\n\n"
+                              "Live Color Preview is now enabled.")
 
     def _map_columns(self, import_headers, import_data):
         """Map imported columns to current column structure
