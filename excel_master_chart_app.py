@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-Excel Master Chart Creator v2.5 - Desktop Application
+Excel Master Chart Creator v2.6 - Desktop Application
 A tksheet-based GUI application for creating formatted Excel master charts
 with auto-color assignment, professional formatting, and multi-format export.
 
-Version 2.5 Features:
+Version 2.6 Features:
 - Excel-like grid interface with tksheet
 - Right-click context menu
 - Auto-save and crash recovery
 - Live color preview
 - 3-shade color system
 - Two export formats: Master Chart (single sheet) and Comprehensive (4-tab)
+- Data validation dropdowns for common medical fields (Route, Contraindications, etc.)
 """
 
 import tkinter as tk
@@ -113,6 +114,115 @@ COLUMN_WIDTH_MAP = {
 }
 
 # ============================================================================
+# DATA VALIDATION DROPDOWNS - Medical Study Guide Fields
+# ============================================================================
+# Dropdown options for common medical/pharmaceutical fields
+DROPDOWN_OPTIONS = {
+    # Drug administration routes
+    "Route": [
+        "Oral (PO)",
+        "Intravenous (IV)",
+        "Intramuscular (IM)",
+        "Subcutaneous (SC)",
+        "Sublingual (SL)",
+        "Buccal",
+        "Transdermal",
+        "Inhalation",
+        "Nasal",
+        "Ophthalmic",
+        "Otic",
+        "Rectal (PR)",
+        "Vaginal",
+        "Topical",
+        "Intrathecal",
+        "Epidural",
+        "Intra-articular",
+        "Multiple routes"
+    ],
+
+    # Contraindication severity levels
+    "Contraindications": [
+        "Absolute: ",
+        "Relative: ",
+        "Caution in: ",
+        "Avoid in: ",
+        "None known"
+    ],
+
+    # Common drug interaction severity
+    "Drug Interactions": [
+        "Major: ",
+        "Moderate: ",
+        "Minor: ",
+        "None known",
+        "Theoretical: "
+    ],
+
+    # Resistance patterns (for antimicrobials)
+    "Resistance": [
+        "Common",
+        "Increasing",
+        "Rare",
+        "Variable",
+        "Not applicable",
+        "Mechanisms: "
+    ],
+
+    # Clinical presentation urgency
+    "Clinical Presentation": [
+        "Acute: ",
+        "Subacute: ",
+        "Chronic: ",
+        "Acute on chronic: ",
+        "Emergent: ",
+        "Variable: "
+    ],
+
+    # Lab value interpretation
+    "Labs": [
+        "Elevated in: ",
+        "Decreased in: ",
+        "Normal in: ",
+        "Variable in: ",
+        "Not typically ordered"
+    ],
+
+    # Common risk factor categories
+    "Risk Factors": [
+        "Modifiable: ",
+        "Non-modifiable: ",
+        "Environmental: ",
+        "Genetic: ",
+        "Lifestyle: ",
+        "Iatrogenic: "
+    ],
+
+    # Treatment urgency/type
+    "Treatment": [
+        "Emergent: ",
+        "Urgent: ",
+        "Elective: ",
+        "Supportive: ",
+        "Definitive: ",
+        "Palliative: ",
+        "First-line: ",
+        "Second-line: ",
+        "Adjunctive: "
+    ],
+
+    # Diagnostic test types
+    "Diagnostics": [
+        "Laboratory: ",
+        "Imaging: ",
+        "Biopsy: ",
+        "Functional test: ",
+        "Physical exam: ",
+        "Clinical diagnosis",
+        "Gold standard: "
+    ]
+}
+
+# ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
 
@@ -133,7 +243,7 @@ def hex_to_rgb(hex_color):
 class ExcelMasterChartApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Excel Master Chart Creator v2.5")
+        self.root.title("Excel Master Chart Creator v2.6")
         self.root.geometry("1400x800")
         self.root.minsize(800, 600)  # Set minimum window size (reduced for better flexibility)
 
@@ -557,8 +667,46 @@ class ExcelMasterChartApp:
         # Bind header changes to sync column names
         self.sheet.bind("<<SheetModified>>", self.sync_column_headers, add=True)
 
+        # Configure data validation dropdowns
+        self.configure_dropdown_validations()
+
         # Update row count
         self.update_row_count()
+
+    def configure_dropdown_validations(self):
+        """Configure dropdown validation for columns that match predefined field types"""
+        if not self.sheet or not self.current_columns:
+            return
+
+        # Map columns to their indices and check if they have dropdown options
+        for col_idx, col_name in enumerate(self.current_columns):
+            # Check if this column name matches any dropdown option keys
+            if col_name in DROPDOWN_OPTIONS:
+                # Set dropdown for this entire column
+                try:
+                    self.sheet.dropdown(
+                        col_idx,
+                        values=DROPDOWN_OPTIONS[col_name],
+                        set_value=None,  # Don't pre-fill
+                        state="normal",  # Allow custom text too
+                        redraw=True
+                    )
+                except Exception as e:
+                    # Some versions of tksheet might have different API
+                    # Try alternative method
+                    try:
+                        for row_idx in range(self.sheet.get_total_rows()):
+                            self.sheet.dropdown(
+                                row_idx,
+                                col_idx,
+                                values=DROPDOWN_OPTIONS[col_name],
+                                set_value=None,
+                                state="normal",
+                                redraw=False
+                            )
+                        self.sheet.refresh()
+                    except:
+                        pass  # Skip if dropdown not supported
 
     # ========================================================================
     # COLUMN MANAGEMENT
@@ -717,6 +865,8 @@ class ExcelMasterChartApp:
         current_data = self.sheet.get_sheet_data()
         new_rows = [[""] * len(self.current_columns) for _ in range(count)]
         self.sheet.set_sheet_data(current_data + new_rows)
+        # Reconfigure dropdowns to include new rows
+        self.configure_dropdown_validations()
         self.update_row_count()
         self.mark_unsaved()
 
@@ -1788,13 +1938,14 @@ class ExcelMasterChartApp:
 
     def show_quick_start(self):
         """Show quick start guide"""
-        guide = """Excel Master Chart Creator v2.5 - Quick Start
+        guide = """Excel Master Chart Creator v2.6 - Quick Start
 
 1. SELECT PRESET
    Choose from Drug Chart, Condition Chart, Lab Values, or Custom
 
 2. ENTER DATA
    - Click any cell to start typing
+   - Dropdowns appear automatically for fields like Route, Contraindications
    - Press Tab to move right, Enter to move down
    - Right-click for more options
 
@@ -1819,7 +1970,7 @@ TIP: Right-click for quick actions"""
 
     def show_about(self):
         """Show about dialog"""
-        about = """Excel Master Chart Creator v2.5
+        about = """Excel Master Chart Creator v2.6
 
 A powerful desktop application for creating professional Excel charts
 with auto-color assignment and multi-format export.
@@ -1831,6 +1982,7 @@ Features:
 ✓ Auto-save and crash recovery
 ✓ Right-click context menu
 ✓ Live color preview
+✓ Data validation dropdowns for common medical fields
 
 Created with Python, tkinter, tksheet, and openpyxl
 
