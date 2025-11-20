@@ -21,6 +21,7 @@ import platform
 import os
 import json
 import csv
+import re
 import threading
 import time
 from pathlib import Path
@@ -268,6 +269,12 @@ class ExcelMasterChartApp:
         self.recent_files_path = Path.home() / ".excel_master_chart_recent.json"
         self.recent_files = self.load_recent_files()
 
+        # Search and filter state
+        self.original_data = None  # Store original data when filtering
+        self.is_filtered = False
+        self.search_results = []  # List of matching row indices
+        self.current_search_index = 0
+
         # Setup UI
         self.create_menu_bar()
         self.setup_ui()
@@ -334,6 +341,8 @@ class ExcelMasterChartApp:
         edit_menu.add_command(label="Edit Column Headers...", command=self.edit_column_headers)
         edit_menu.add_command(label="Clear All Data", command=self.clear_all_data)
         edit_menu.add_separator()
+        edit_menu.add_command(label="Find...", command=self.show_find_dialog, accelerator="Cmd+F")
+        edit_menu.add_separator()
         edit_menu.add_command(label="Validate Data Quality...", command=self.show_data_validation)
 
         # View menu
@@ -342,6 +351,8 @@ class ExcelMasterChartApp:
         view_menu.add_checkbutton(label="Live Color Preview", variable=self.live_preview_var,
                                   command=self.toggle_color_preview)
         view_menu.add_command(label="Preview Colors", command=self.preview_colors)
+        view_menu.add_separator()
+        view_menu.add_command(label="Clear Filter", command=self.clear_filter)
         view_menu.add_separator()
         view_menu.add_command(label="Refresh Auto-Complete", command=self.refresh_autocomplete)
 
@@ -990,6 +1001,236 @@ class ExcelMasterChartApp:
 
             # OK button
             ttk.Button(dialog, text="OK", command=dialog.destroy).pack(pady=10)
+
+    # ========================================================================
+    # SEARCH AND FILTER
+    # ========================================================================
+
+    def show_find_dialog(self):
+        """Show find/search dialog"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Find")
+        dialog.geometry("500x250")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Search input
+        ttk.Label(dialog, text="Find what:").pack(anchor=tk.W, padx=10, pady=(10, 0))
+        search_var = tk.StringVar()
+        search_entry = ttk.Entry(dialog, textvariable=search_var, width=50)
+        search_entry.pack(padx=10, pady=5, fill=tk.X)
+        search_entry.focus()
+
+        # Search options
+        options_frame = ttk.LabelFrame(dialog, text="Options", padding="10")
+        options_frame.pack(padx=10, pady=10, fill=tk.BOTH)
+
+        case_sensitive_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(options_frame, text="Case sensitive",
+                       variable=case_sensitive_var).pack(anchor=tk.W)
+
+        whole_word_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(options_frame, text="Match whole word",
+                       variable=whole_word_var).pack(anchor=tk.W)
+
+        # Search scope
+        scope_var = tk.StringVar(value="all")
+        ttk.Radiobutton(options_frame, text="Search all columns",
+                       variable=scope_var, value="all").pack(anchor=tk.W, pady=2)
+        ttk.Radiobutton(options_frame, text="Search first column only",
+                       variable=scope_var, value="first").pack(anchor=tk.W, pady=2)
+
+        # Button frame
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=10)
+
+        def do_find():
+            search_text = search_var.get()
+            if not search_text:
+                messagebox.showwarning("No Search Text", "Please enter text to search for.")
+                return
+
+            matches = self.find_in_data(
+                search_text,
+                case_sensitive=case_sensitive_var.get(),
+                whole_word=whole_word_var.get(),
+                scope=scope_var.get()
+            )
+
+            if matches:
+                dialog.destroy()
+                self.show_search_results(search_text, matches)
+            else:
+                messagebox.showinfo("No Matches", f"No matches found for '{search_text}'.")
+
+        def do_filter():
+            search_text = search_var.get()
+            if not search_text:
+                messagebox.showwarning("No Search Text", "Please enter text to filter by.")
+                return
+
+            matches = self.find_in_data(
+                search_text,
+                case_sensitive=case_sensitive_var.get(),
+                whole_word=whole_word_var.get(),
+                scope=scope_var.get()
+            )
+
+            if matches:
+                dialog.destroy()
+                self.apply_filter(search_text, matches)
+            else:
+                messagebox.showinfo("No Matches", f"No matches found for '{search_text}'.")
+
+        ttk.Button(button_frame, text="Find All", command=do_find).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Filter", command=do_filter).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+    def find_in_data(self, search_text, case_sensitive=False, whole_word=False, scope="all"):
+        """Find all rows containing the search text
+
+        Args:
+            search_text: Text to search for
+            case_sensitive: Whether search is case sensitive
+            whole_word: Whether to match whole words only
+            scope: "all" for all columns, "first" for first column only
+
+        Returns:
+            List of (row_index, column_index, cell_value) tuples for matches
+        """
+        data = self.sheet.get_sheet_data()
+        matches = []
+
+        # Prepare search text
+        if not case_sensitive:
+            search_text = search_text.lower()
+
+        for row_idx, row in enumerate(data):
+            # Skip completely empty rows
+            if not any(cell.strip() if isinstance(cell, str) else cell for cell in row):
+                continue
+
+            # Determine which columns to search
+            columns_to_search = [0] if scope == "first" else range(len(row))
+
+            for col_idx in columns_to_search:
+                if col_idx >= len(row):
+                    continue
+
+                cell_value = str(row[col_idx]) if row[col_idx] else ""
+                if not cell_value:
+                    continue
+
+                # Prepare cell value
+                compare_value = cell_value if case_sensitive else cell_value.lower()
+
+                # Check for match
+                if whole_word:
+                    # Match whole words only
+                    pattern = r'\b' + re.escape(search_text) + r'\b'
+                    if re.search(pattern, compare_value):
+                        matches.append((row_idx, col_idx, cell_value))
+                else:
+                    # Substring match
+                    if search_text in compare_value:
+                        matches.append((row_idx, col_idx, cell_value))
+
+        return matches
+
+    def show_search_results(self, search_text, matches):
+        """Display search results in a dialog"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"Search Results for '{search_text}'")
+        dialog.geometry("600x400")
+        dialog.transient(self.root)
+
+        ttk.Label(dialog, text=f"Found {len(matches)} matches:",
+                 font=("", 12, "bold")).pack(pady=10)
+
+        # Create scrollable listbox
+        frame = ttk.Frame(dialog)
+        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        scrollbar = ttk.Scrollbar(frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        listbox = tk.Listbox(frame, yscrollcommand=scrollbar.set, font=("Courier", 10))
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=listbox.yview)
+
+        # Populate results
+        for row_idx, col_idx, cell_value in matches:
+            col_name = self.current_columns[col_idx] if col_idx < len(self.current_columns) else f"Col{col_idx}"
+            # Truncate long cell values
+            display_value = cell_value[:50] + "..." if len(cell_value) > 50 else cell_value
+            listbox.insert(tk.END, f"Row {row_idx + 1}, {col_name}: {display_value}")
+
+        def jump_to_match(event=None):
+            selection = listbox.curselection()
+            if selection:
+                idx = selection[0]
+                row_idx, col_idx, _ = matches[idx]
+                # Select the cell in the sheet
+                try:
+                    self.sheet.see(row_idx, col_idx)
+                    self.sheet.select_cell(row_idx, col_idx)
+                    dialog.destroy()
+                except:
+                    pass
+
+        listbox.bind("<Double-Button-1>", jump_to_match)
+
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=10)
+        ttk.Button(button_frame, text="Go to Selected", command=jump_to_match).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Close", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+    def apply_filter(self, search_text, matches):
+        """Filter the data to show only matching rows"""
+        if self.is_filtered:
+            # Already filtered, restore first
+            self.clear_filter()
+
+        # Store original data
+        self.original_data = self.sheet.get_sheet_data()
+        self.is_filtered = True
+
+        # Get unique row indices from matches
+        matching_row_indices = sorted(set(m[0] for m in matches))
+
+        # Filter data
+        filtered_data = [self.original_data[idx] for idx in matching_row_indices]
+
+        # Update sheet
+        self.sheet.set_sheet_data(filtered_data)
+        self.update_row_count()
+
+        # Update status
+        self.status_label.config(text=f"Filtered: showing {len(filtered_data)} rows matching '{search_text}'  |  Click View > Clear Filter to show all")
+
+        # Add Clear Filter to View menu temporarily
+        messagebox.showinfo("Filter Applied",
+                          f"Showing {len(filtered_data)} rows matching '{search_text}'.\n\n"
+                          "To show all data again, use View > Clear Filter.")
+
+    def clear_filter(self):
+        """Clear any active filter and restore all data"""
+        if not self.is_filtered:
+            messagebox.showinfo("No Filter Active", "There is no active filter to clear.")
+            return
+
+        # Restore original data
+        if self.original_data:
+            self.sheet.set_sheet_data(self.original_data)
+            self.update_row_count()
+
+        self.original_data = None
+        self.is_filtered = False
+
+        # Update status
+        self.status_label.config(text="All rows displayed")
+
+        messagebox.showinfo("Filter Cleared", "All data is now visible.")
 
     # ========================================================================
     # CONTEXT MENU
