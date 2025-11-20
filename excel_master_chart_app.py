@@ -417,108 +417,123 @@ class ExcelMasterChartApp:
         home_tab = ttk.Frame(self.ribbon_notebook, padding="5")
         self.ribbon_notebook.add(home_tab, text="Home")
 
-        # === CLIPBOARD GROUP (compact) ===
-        clipboard_group = ttk.LabelFrame(home_tab, text="Clipboard", padding="3")
-        clipboard_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+        # === CLIPBOARD DROPDOWN ===
+        clipboard_menu = tk.Menu(self.root, tearoff=0)
+        clipboard_menu.add_command(label="Cut", command=lambda: self.sheet.cut())
+        clipboard_menu.add_command(label="Copy", command=lambda: self.sheet.copy())
+        clipboard_menu.add_command(label="Paste", command=lambda: self.sheet.paste())
 
-        ttk.Button(clipboard_group, text="Cut", command=lambda: self.sheet.cut(), width=8).pack(padx=2, pady=1)
-        ttk.Button(clipboard_group, text="Copy", command=lambda: self.sheet.copy(), width=8).pack(padx=2, pady=1)
-        ttk.Button(clipboard_group, text="Paste", command=lambda: self.sheet.paste(), width=8).pack(padx=2, pady=1)
+        clipboard_btn = ttk.Menubutton(home_tab, text="Clipboard ▼", menu=clipboard_menu)
+        clipboard_btn.pack(side=tk.LEFT, padx=2, pady=2)
 
-        # === EDIT GROUP (compact) ===
-        edit_group = ttk.LabelFrame(home_tab, text="Edit", padding="3")
-        edit_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+        # === EDIT DROPDOWN ===
+        edit_menu = tk.Menu(self.root, tearoff=0)
+        edit_menu.add_command(label="⟲ Undo", command=self.undo_action)
+        edit_menu.add_command(label="⟳ Redo", command=self.redo_action)
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Find", command=self.show_find_dialog)
 
-        ttk.Button(edit_group, text="⟲ Undo", command=self.undo_action, width=8).pack(padx=2, pady=1)
-        ttk.Button(edit_group, text="⟳ Redo", command=self.redo_action, width=8).pack(padx=2, pady=1)
-        ttk.Button(edit_group, text="Find", command=self.show_find_dialog, width=8).pack(padx=2, pady=1)
+        edit_btn = ttk.Menubutton(home_tab, text="Edit ▼", menu=edit_menu)
+        edit_btn.pack(side=tk.LEFT, padx=2, pady=2)
 
-        # === DELETE GROUP (compact) ===
-        delete_group = ttk.LabelFrame(home_tab, text="Delete", padding="3")
-        delete_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+        # === DELETE DROPDOWN ===
+        delete_menu = tk.Menu(self.root, tearoff=0)
+        delete_menu.add_command(label="Delete Rows", command=self.delete_selected_rows)
+        delete_menu.add_command(label="Delete Columns", command=self.delete_selected_columns)
+        delete_menu.add_command(label="Clear Cells", command=self.clear_selected_cells)
 
-        ttk.Button(delete_group, text="Delete Rows", command=self.delete_selected_rows, width=10).pack(padx=2, pady=1)
-        ttk.Button(delete_group, text="Delete Columns", command=self.delete_selected_columns, width=10).pack(padx=2, pady=1)
-        ttk.Button(delete_group, text="Clear Cells", command=self.clear_selected_cells, width=10).pack(padx=2, pady=1)
+        delete_btn = ttk.Menubutton(home_tab, text="Delete ▼", menu=delete_menu)
+        delete_btn.pack(side=tk.LEFT, padx=2, pady=2)
 
-        # === CELLS GROUP (compact) ===
-        cells_group = ttk.LabelFrame(home_tab, text="Cells", padding="3")
-        cells_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+        # === CELLS DROPDOWN ===
+        cells_menu = tk.Menu(self.root, tearoff=0)
+        cells_menu.add_command(label="Insert Row", command=self.insert_row_below)
+        cells_menu.add_command(label="Insert Column", command=self.insert_column_after)
 
-        ttk.Button(cells_group, text="Insert Row", command=self.insert_row_below, width=10).pack(padx=2, pady=1)
-        ttk.Button(cells_group, text="Insert Column", command=self.insert_column_after, width=10).pack(padx=2, pady=1)
+        cells_btn = ttk.Menubutton(home_tab, text="Cells ▼", menu=cells_menu)
+        cells_btn.pack(side=tk.LEFT, padx=2, pady=2)
 
         # === DATA TAB ===
         data_tab = ttk.Frame(self.ribbon_notebook, padding="5")
         self.ribbon_notebook.add(data_tab, text="Data")
 
-        # Setup Group (compact)
-        setup_group = ttk.LabelFrame(data_tab, text="Setup", padding="3")
-        setup_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+        # === SETUP DROPDOWN ===
+        # Keep preset combobox visible, put other options in dropdown
+        setup_frame = ttk.Frame(data_tab)
+        setup_frame.pack(side=tk.LEFT, padx=2, pady=2)
 
-        ttk.Label(setup_group, text="Preset:").grid(row=0, column=0, sticky=tk.W, padx=2, pady=1)
+        ttk.Label(setup_frame, text="Preset:").pack(side=tk.LEFT, padx=2)
         preset_combo = ttk.Combobox(
-            setup_group,
+            setup_frame,
             textvariable=self.current_preset,
             values=list(COLUMN_PRESETS.keys()),
             state="readonly",
             width=18
         )
-        preset_combo.grid(row=0, column=1, padx=2, pady=1)
+        preset_combo.pack(side=tk.LEFT, padx=2)
         preset_combo.bind("<<ComboboxSelected>>", self.on_preset_change)
 
-        ttk.Button(setup_group, text="Custom", command=self.define_custom_columns, width=8).grid(row=1, column=0, padx=2, pady=1)
-        ttk.Button(setup_group, text="Edit Headers", command=self.edit_column_headers, width=10).grid(row=1, column=1, padx=2, pady=1)
+        setup_menu = tk.Menu(self.root, tearoff=0)
+        setup_menu.add_command(label="Custom", command=self.define_custom_columns)
+        setup_menu.add_command(label="Edit Headers", command=self.edit_column_headers)
 
-        # File Group (compact)
-        file_group = ttk.LabelFrame(data_tab, text="File", padding="3")
-        file_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+        setup_btn = ttk.Menubutton(setup_frame, text="Setup ▼", menu=setup_menu)
+        setup_btn.pack(side=tk.LEFT, padx=2)
 
-        ttk.Button(file_group, text="Save", command=self.save_data_json, width=10).pack(padx=2, pady=1)
-        ttk.Button(file_group, text="Load", command=self.load_data_json, width=10).pack(padx=2, pady=1)
-        ttk.Button(file_group, text="Import CSV", command=self.import_from_csv, width=10).pack(padx=2, pady=1)
+        # === FILE DROPDOWN ===
+        file_menu = tk.Menu(self.root, tearoff=0)
+        file_menu.add_command(label="Save", command=self.save_data_json)
+        file_menu.add_command(label="Load", command=self.load_data_json)
+        file_menu.add_separator()
+        file_menu.add_command(label="Import CSV", command=self.import_from_csv)
 
-        # Rows Group (compact)
-        rows_group = ttk.LabelFrame(data_tab, text="Rows", padding="3")
-        rows_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+        file_btn = ttk.Menubutton(data_tab, text="File ▼", menu=file_menu)
+        file_btn.pack(side=tk.LEFT, padx=2, pady=2)
 
-        row_buttons_frame = ttk.Frame(rows_group)
-        row_buttons_frame.pack()
-        ttk.Button(row_buttons_frame, text="+10", command=lambda: self.add_quick_rows(10), width=4).pack(side=tk.LEFT, padx=1, pady=1)
-        ttk.Button(row_buttons_frame, text="+50", command=lambda: self.add_quick_rows(50), width=4).pack(side=tk.LEFT, padx=1, pady=1)
-        ttk.Button(row_buttons_frame, text="+100", command=lambda: self.add_quick_rows(100), width=4).pack(side=tk.LEFT, padx=1, pady=1)
-        ttk.Button(rows_group, text="Delete Empty", command=self.delete_empty_rows, width=12).pack(padx=2, pady=1)
+        # === ROWS DROPDOWN ===
+        rows_menu = tk.Menu(self.root, tearoff=0)
+        rows_menu.add_command(label="Add 10 Rows", command=lambda: self.add_quick_rows(10))
+        rows_menu.add_command(label="Add 50 Rows", command=lambda: self.add_quick_rows(50))
+        rows_menu.add_command(label="Add 100 Rows", command=lambda: self.add_quick_rows(100))
+        rows_menu.add_separator()
+        rows_menu.add_command(label="Delete Empty Rows", command=self.delete_empty_rows)
 
-        # View Group (compact)
-        view_group = ttk.LabelFrame(data_tab, text="View", padding="3")
-        view_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+        rows_btn = ttk.Menubutton(data_tab, text="Rows ▼", menu=rows_menu)
+        rows_btn.pack(side=tk.LEFT, padx=2, pady=2)
 
-        ttk.Checkbutton(view_group, text="Live Colors", variable=self.live_preview_var,
-                       command=self.toggle_color_preview).pack(anchor=tk.W, padx=2, pady=1)
-        ttk.Button(view_group, text="Preview", command=self.preview_colors, width=10).pack(padx=2, pady=1)
-        ttk.Button(view_group, text="Clear Filter", command=self.clear_filter, width=10).pack(padx=2, pady=1)
+        # === VIEW DROPDOWN ===
+        view_menu = tk.Menu(self.root, tearoff=0)
+        view_menu.add_checkbutton(label="Live Colors", variable=self.live_preview_var,
+                                   command=self.toggle_color_preview)
+        view_menu.add_separator()
+        view_menu.add_command(label="Preview", command=self.preview_colors)
+        view_menu.add_command(label="Clear Filter", command=self.clear_filter)
+
+        view_btn = ttk.Menubutton(data_tab, text="View ▼", menu=view_menu)
+        view_btn.pack(side=tk.LEFT, padx=2, pady=2)
 
         # === EXPORT TAB ===
         export_tab = ttk.Frame(self.ribbon_notebook, padding="5")
         self.ribbon_notebook.add(export_tab, text="Export")
 
-        # Format Group (compact)
-        format_group = ttk.LabelFrame(export_tab, text="Format", padding="3")
-        format_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+        # === FORMAT DROPDOWN ===
+        format_menu = tk.Menu(self.root, tearoff=0)
+        format_menu.add_radiobutton(label="Master Chart", variable=self.export_format,
+                                     value="master_chart")
+        format_menu.add_radiobutton(label="Comprehensive (4 Tabs)", variable=self.export_format,
+                                     value="comprehensive")
 
-        ttk.Radiobutton(format_group, text="Master Chart", variable=self.export_format,
-                       value="master_chart").pack(anchor=tk.W, padx=2, pady=1)
-        ttk.Radiobutton(format_group, text="Comprehensive (4 Tabs)", variable=self.export_format,
-                       value="comprehensive").pack(anchor=tk.W, padx=2, pady=1)
+        format_btn = ttk.Menubutton(export_tab, text="Format ▼", menu=format_menu)
+        format_btn.pack(side=tk.LEFT, padx=2, pady=2)
 
-        # Export Group (compact)
-        export_group = ttk.LabelFrame(export_tab, text="Export", padding="3")
-        export_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+        # === EXPORT DROPDOWN ===
+        export_menu = tk.Menu(self.root, tearoff=0)
+        export_menu.add_command(label="Export to Excel", command=self.export_to_excel)
+        export_menu.add_separator()
+        export_menu.add_command(label="Validate Data", command=self.show_data_validation)
 
-        ttk.Button(export_group, text="Export to Excel", command=self.export_to_excel,
-                  width=15).pack(padx=2, pady=10)
-        ttk.Button(export_group, text="Validate Data", command=self.show_data_validation,
-                  width=15).pack(padx=2, pady=1)
+        export_btn = ttk.Menubutton(export_tab, text="Export ▼", menu=export_menu)
+        export_btn.pack(side=tk.LEFT, padx=2, pady=2)
 
     def toggle_ribbon(self):
         """Toggle ribbon visibility"""
