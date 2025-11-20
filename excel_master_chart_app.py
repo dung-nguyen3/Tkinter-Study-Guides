@@ -414,84 +414,111 @@ class ExcelMasterChartApp:
         self.ribbon_notebook.pack(fill=tk.BOTH, expand=True)
 
         # HOME TAB
-        home_tab = ttk.Frame(self.ribbon_notebook, padding="10")
+        home_tab = ttk.Frame(self.ribbon_notebook, padding="5")
         self.ribbon_notebook.add(home_tab, text="Home")
 
-        # Column Setup Group
-        col_group = ttk.LabelFrame(home_tab, text="Column Setup", padding="10")
-        col_group.pack(side=tk.LEFT, padx=5, fill=tk.Y)
+        # === CLIPBOARD GROUP (compact) ===
+        clipboard_group = ttk.LabelFrame(home_tab, text="Clipboard", padding="3")
+        clipboard_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
 
-        ttk.Label(col_group, text="Preset:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        ttk.Button(clipboard_group, text="Cut", command=lambda: self.sheet.cut(), width=8).pack(padx=2, pady=1)
+        ttk.Button(clipboard_group, text="Copy", command=lambda: self.sheet.copy(), width=8).pack(padx=2, pady=1)
+        ttk.Button(clipboard_group, text="Paste", command=lambda: self.sheet.paste(), width=8).pack(padx=2, pady=1)
+
+        # === EDIT GROUP (compact) ===
+        edit_group = ttk.LabelFrame(home_tab, text="Edit", padding="3")
+        edit_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+
+        ttk.Button(edit_group, text="⟲ Undo", command=self.undo_action, width=8).pack(padx=2, pady=1)
+        ttk.Button(edit_group, text="⟳ Redo", command=self.redo_action, width=8).pack(padx=2, pady=1)
+        ttk.Button(edit_group, text="Find", command=self.show_find_dialog, width=8).pack(padx=2, pady=1)
+
+        # === DELETE GROUP (compact) ===
+        delete_group = ttk.LabelFrame(home_tab, text="Delete", padding="3")
+        delete_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+
+        ttk.Button(delete_group, text="Delete Rows", command=self.delete_selected_rows, width=10).pack(padx=2, pady=1)
+        ttk.Button(delete_group, text="Delete Columns", command=self.delete_selected_columns, width=10).pack(padx=2, pady=1)
+        ttk.Button(delete_group, text="Clear Cells", command=self.clear_selected_cells, width=10).pack(padx=2, pady=1)
+
+        # === CELLS GROUP (compact) ===
+        cells_group = ttk.LabelFrame(home_tab, text="Cells", padding="3")
+        cells_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+
+        ttk.Button(cells_group, text="Insert Row", command=self.insert_row_below, width=10).pack(padx=2, pady=1)
+        ttk.Button(cells_group, text="Insert Column", command=self.insert_column_after, width=10).pack(padx=2, pady=1)
+
+        # === DATA TAB ===
+        data_tab = ttk.Frame(self.ribbon_notebook, padding="5")
+        self.ribbon_notebook.add(data_tab, text="Data")
+
+        # Setup Group (compact)
+        setup_group = ttk.LabelFrame(data_tab, text="Setup", padding="3")
+        setup_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
+
+        ttk.Label(setup_group, text="Preset:").grid(row=0, column=0, sticky=tk.W, padx=2, pady=1)
         preset_combo = ttk.Combobox(
-            col_group,
+            setup_group,
             textvariable=self.current_preset,
             values=list(COLUMN_PRESETS.keys()),
             state="readonly",
-            width=20
+            width=18
         )
-        preset_combo.grid(row=0, column=1, columnspan=2, pady=2, padx=5)
+        preset_combo.grid(row=0, column=1, padx=2, pady=1)
         preset_combo.bind("<<ComboboxSelected>>", self.on_preset_change)
 
-        ttk.Button(col_group, text="Custom Columns", command=self.define_custom_columns, width=15).grid(row=1, column=0, columnspan=2, pady=2, padx=2)
-        ttk.Button(col_group, text="Edit Headers", command=self.edit_column_headers, width=15).grid(row=1, column=2, pady=2, padx=2)
+        ttk.Button(setup_group, text="Custom", command=self.define_custom_columns, width=8).grid(row=1, column=0, padx=2, pady=1)
+        ttk.Button(setup_group, text="Edit Headers", command=self.edit_column_headers, width=10).grid(row=1, column=1, padx=2, pady=1)
 
-        # Rows Group
-        rows_group = ttk.LabelFrame(home_tab, text="Rows", padding="10")
-        rows_group.pack(side=tk.LEFT, padx=5, fill=tk.Y)
+        # File Group (compact)
+        file_group = ttk.LabelFrame(data_tab, text="File", padding="3")
+        file_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
 
-        ttk.Label(rows_group, text="Quick Add:").grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=2)
-        ttk.Button(rows_group, text="+10", command=lambda: self.add_quick_rows(10), width=6).grid(row=1, column=0, padx=2, pady=2)
-        ttk.Button(rows_group, text="+50", command=lambda: self.add_quick_rows(50), width=6).grid(row=1, column=1, padx=2, pady=2)
-        ttk.Button(rows_group, text="+100", command=lambda: self.add_quick_rows(100), width=6).grid(row=1, column=2, padx=2, pady=2)
+        ttk.Button(file_group, text="Save", command=self.save_data_json, width=10).pack(padx=2, pady=1)
+        ttk.Button(file_group, text="Load", command=self.load_data_json, width=10).pack(padx=2, pady=1)
+        ttk.Button(file_group, text="Import CSV", command=self.import_from_csv, width=10).pack(padx=2, pady=1)
 
-        ttk.Label(rows_group, text="Manage:").grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(10,2))
-        ttk.Button(rows_group, text="Delete Empty", command=self.delete_empty_rows, width=12).grid(row=3, column=0, columnspan=2, pady=2, padx=2)
-        ttk.Button(rows_group, text="Clear All", command=self.clear_all_data, width=12).grid(row=3, column=2, pady=2, padx=2)
+        # Rows Group (compact)
+        rows_group = ttk.LabelFrame(data_tab, text="Rows", padding="3")
+        rows_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
 
-        # DATA TAB
-        data_tab = ttk.Frame(self.ribbon_notebook, padding="10")
-        self.ribbon_notebook.add(data_tab, text="Data")
+        row_buttons_frame = ttk.Frame(rows_group)
+        row_buttons_frame.pack()
+        ttk.Button(row_buttons_frame, text="+10", command=lambda: self.add_quick_rows(10), width=4).pack(side=tk.LEFT, padx=1, pady=1)
+        ttk.Button(row_buttons_frame, text="+50", command=lambda: self.add_quick_rows(50), width=4).pack(side=tk.LEFT, padx=1, pady=1)
+        ttk.Button(row_buttons_frame, text="+100", command=lambda: self.add_quick_rows(100), width=4).pack(side=tk.LEFT, padx=1, pady=1)
+        ttk.Button(rows_group, text="Delete Empty", command=self.delete_empty_rows, width=12).pack(padx=2, pady=1)
 
-        # Save/Load Group
-        file_group = ttk.LabelFrame(data_tab, text="File Operations", padding="10")
-        file_group.pack(side=tk.LEFT, padx=5, fill=tk.Y)
+        # View Group (compact)
+        view_group = ttk.LabelFrame(data_tab, text="View", padding="3")
+        view_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
 
-        ttk.Button(file_group, text="Save Data", command=self.save_data_json, width=15).grid(row=0, column=0, pady=5, padx=5)
-        ttk.Button(file_group, text="Load Data", command=self.load_data_json, width=15).grid(row=1, column=0, pady=5, padx=5)
+        ttk.Checkbutton(view_group, text="Live Colors", variable=self.live_preview_var,
+                       command=self.toggle_color_preview).pack(anchor=tk.W, padx=2, pady=1)
+        ttk.Button(view_group, text="Preview", command=self.preview_colors, width=10).pack(padx=2, pady=1)
+        ttk.Button(view_group, text="Clear Filter", command=self.clear_filter, width=10).pack(padx=2, pady=1)
 
-        # EXPORT TAB
-        export_tab = ttk.Frame(self.ribbon_notebook, padding="10")
+        # === EXPORT TAB ===
+        export_tab = ttk.Frame(self.ribbon_notebook, padding="5")
         self.ribbon_notebook.add(export_tab, text="Export")
 
-        # Format Group
-        format_group = ttk.LabelFrame(export_tab, text="Export Format", padding="10")
-        format_group.pack(side=tk.LEFT, padx=5, fill=tk.Y)
+        # Format Group (compact)
+        format_group = ttk.LabelFrame(export_tab, text="Format", padding="3")
+        format_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
 
-        ttk.Radiobutton(
-            format_group,
-            text="Master Chart\n(Single Sheet)",
-            variable=self.export_format,
-            value="master_chart"
-        ).pack(anchor=tk.W, pady=5, padx=5)
+        ttk.Radiobutton(format_group, text="Master Chart", variable=self.export_format,
+                       value="master_chart").pack(anchor=tk.W, padx=2, pady=1)
+        ttk.Radiobutton(format_group, text="Comprehensive (4 Tabs)", variable=self.export_format,
+                       value="comprehensive").pack(anchor=tk.W, padx=2, pady=1)
 
-        ttk.Radiobutton(
-            format_group,
-            text="Comprehensive\n(4 Tabs)",
-            variable=self.export_format,
-            value="comprehensive"
-        ).pack(anchor=tk.W, pady=5, padx=5)
+        # Export Group (compact)
+        export_group = ttk.LabelFrame(export_tab, text="Export", padding="3")
+        export_group.pack(side=tk.LEFT, padx=2, fill=tk.Y)
 
-        # Export Action Group
-        action_group = ttk.LabelFrame(export_tab, text="Action", padding="10")
-        action_group.pack(side=tk.LEFT, padx=5, fill=tk.Y)
-
-        export_btn = ttk.Button(
-            action_group,
-            text="EXPORT TO EXCEL",
-            command=self.export_to_excel,
-            width=20
-        )
-        export_btn.pack(pady=20, padx=10)
+        ttk.Button(export_group, text="Export to Excel", command=self.export_to_excel,
+                  width=15).pack(padx=2, pady=10)
+        ttk.Button(export_group, text="Validate Data", command=self.show_data_validation,
+                  width=15).pack(padx=2, pady=1)
 
     def toggle_ribbon(self):
         """Toggle ribbon visibility"""
@@ -709,12 +736,13 @@ class ExcelMasterChartApp:
             empty_vertical=0
         )
 
-        # Enable all bindings including header editing
+        # Enable all bindings including drag and drop
         self.sheet.enable_bindings(
             "single_select", "drag_select", "column_width_resize",
             "double_click_column_resize", "row_height_resize",
             "column_select", "row_select", "edit_cell", "edit_index", "edit_header",
-            "copy", "paste", "delete", "undo", "redo"
+            "copy", "paste", "delete", "undo", "redo",
+            "column_drag_and_drop", "row_drag_and_drop"  # Enable drag and drop
             # Note: right_click_popup_menu disabled to use custom context menu
         )
 
@@ -1530,6 +1558,22 @@ class ExcelMasterChartApp:
             self.sheet.redo()
         except:
             pass
+
+    def undo_action(self):
+        """Undo action with user feedback"""
+        try:
+            self.sheet.undo()
+            self.status_label.config(text="● Undo successful")
+        except:
+            self.status_label.config(text="● Nothing to undo")
+
+    def redo_action(self):
+        """Redo action with user feedback"""
+        try:
+            self.sheet.redo()
+            self.status_label.config(text="● Redo successful")
+        except:
+            self.status_label.config(text="● Nothing to redo")
 
     # ========================================================================
     # COLOR PREVIEW
