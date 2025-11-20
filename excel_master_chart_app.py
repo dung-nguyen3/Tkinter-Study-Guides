@@ -692,8 +692,9 @@ class ExcelMasterChartApp:
         # Bind header changes to sync column names
         self.sheet.bind("<<SheetModified>>", self.sync_column_headers, add=True)
 
-        # Configure data validation dropdowns
-        self.configure_dropdown_validations()
+        # NOTE: Dropdown validation disabled - tksheet auto-fills cells with dropdown values
+        # Users can still manually enter values and use auto-complete suggestions
+        # self.configure_dropdown_validations()
 
         # Update row count
         self.update_row_count()
@@ -934,8 +935,8 @@ class ExcelMasterChartApp:
         current_data = self.sheet.get_sheet_data()
         new_rows = [[""] * len(self.current_columns) for _ in range(count)]
         self.sheet.set_sheet_data(current_data + new_rows)
-        # Reconfigure dropdowns to include new rows
-        self.configure_dropdown_validations()
+        # NOTE: Dropdown validation disabled (auto-fills cells)
+        # self.configure_dropdown_validations()
         self.update_row_count()
         self.mark_unsaved()
 
@@ -1516,9 +1517,11 @@ class ExcelMasterChartApp:
 
     def refresh_autocomplete(self):
         """Refresh auto-complete suggestions based on current data"""
-        self.configure_dropdown_validations()
-        messagebox.showinfo("Auto-Complete Refreshed",
-                          "Auto-complete suggestions have been updated based on your current data.")
+        # NOTE: Dropdown validation disabled (auto-fills cells)
+        # self.configure_dropdown_validations()
+        messagebox.showinfo("Auto-Complete Note",
+                          "Dropdown auto-complete is currently disabled due to tksheet auto-fill issues.\n\n"
+                          "You can still manually type values - the app learns from your entries.")
 
     def preview_colors(self):
         """Show color assignment preview dialog"""
@@ -1726,8 +1729,8 @@ class ExcelMasterChartApp:
         # Load data
         self.sheet.set_sheet_data(data["rows"])
 
-        # Refresh dropdowns to include auto-complete from loaded data
-        self.configure_dropdown_validations()
+        # NOTE: Dropdown validation disabled (auto-fills cells)
+        # self.configure_dropdown_validations()
 
         self.update_row_count()
         self.mark_saved()
@@ -1858,8 +1861,8 @@ class ExcelMasterChartApp:
             non_empty_current = [row for row in current_data if any(cell.strip() if isinstance(cell, str) else cell for cell in row)]
             self.sheet.set_sheet_data(non_empty_current + mapped_data)
 
-        # Refresh auto-complete with new data
-        self.configure_dropdown_validations()
+        # NOTE: Dropdown validation disabled (auto-fills cells)
+        # self.configure_dropdown_validations()
 
         self.update_row_count()
         self.mark_unsaved()
@@ -2550,10 +2553,9 @@ class ExcelMasterChartApp:
 
 2. ENTER DATA
    - Click any cell to start typing
-   - Dropdowns show both standard options AND your previous entries
-   - Use View > Refresh Auto-Complete to update suggestions
    - Press Tab to move right, Enter to move down
    - Right-click for more options
+   - Use Edit > Find to search your data
 
 3. ADD ROWS
    - Use +10, +50, +100 buttons for quick adding
@@ -2588,8 +2590,9 @@ Features:
 ✓ Auto-save and crash recovery
 ✓ Right-click context menu
 ✓ Live color preview
-✓ Data validation dropdowns with auto-complete
-✓ Smart suggestions from your previous entries
+✓ Data quality validation
+✓ CSV/Excel import
+✓ Search and filter
 
 Created with Python, tkinter, tksheet, and openpyxl
 
