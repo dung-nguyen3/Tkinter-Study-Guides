@@ -323,6 +323,8 @@ class ExcelMasterChartApp:
         edit_menu.add_separator()
         edit_menu.add_command(label="Edit Column Headers...", command=self.edit_column_headers)
         edit_menu.add_command(label="Clear All Data", command=self.clear_all_data)
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Validate Data Quality...", command=self.show_data_validation)
 
         # View menu
         view_menu = tk.Menu(menubar, tearoff=0)
@@ -942,6 +944,43 @@ class ExcelMasterChartApp:
         non_empty = sum(1 for row in data if any(cell.strip() if isinstance(cell, str) else cell for cell in row))
         self.row_count_label.config(text=f"Rows with data: {non_empty}/{len(data)}")
 
+    def show_data_validation(self):
+        """Show data validation results in a dialog"""
+        warnings = self.validate_data_quality()
+
+        if not warnings:
+            messagebox.showinfo(
+                "Data Quality Check",
+                "✓ No data quality issues detected!\n\nYour data looks good and is ready for export."
+            )
+        else:
+            warning_text = "Data quality issues detected:\n\n" + "\n\n".join(warnings)
+            warning_text += "\n\nReview and fix these issues before exporting for best results."
+
+            # Create custom dialog with scrollable text
+            dialog = tk.Toplevel(self.root)
+            dialog.title("Data Quality Validation")
+            dialog.geometry("600x400")
+            dialog.transient(self.root)
+
+            # Text widget with scrollbar
+            text_frame = ttk.Frame(dialog)
+            text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+            scrollbar = ttk.Scrollbar(text_frame)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            text_widget = tk.Text(text_frame, wrap=tk.WORD, yscrollcommand=scrollbar.set)
+            text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.config(command=text_widget.yview)
+
+            # Insert warning text
+            text_widget.insert("1.0", warning_text)
+            text_widget.config(state=tk.DISABLED)  # Make read-only
+
+            # OK button
+            ttk.Button(dialog, text="OK", command=dialog.destroy).pack(pady=10)
+
     # ========================================================================
     # CONTEXT MENU
     # ========================================================================
@@ -1485,8 +1524,95 @@ class ExcelMasterChartApp:
     # EXPORT TO EXCEL
     # ========================================================================
 
+    def validate_data_quality(self):
+        """Validate data quality and return list of warnings
+
+        Returns:
+            List of warning strings, empty if no issues found
+        """
+        warnings = []
+        data = self.sheet.get_sheet_data()
+
+        # Track statistics
+        empty_first_column = []
+        incomplete_rows = []
+        duplicate_entries = {}
+        very_sparse_rows = []
+
+        for row_idx, row in enumerate(data, start=1):
+            # Skip completely empty rows
+            if not any(cell.strip() if isinstance(cell, str) else cell for cell in row):
+                continue
+
+            # Check for empty first column (drug class / main identifier)
+            if not row[0] or (isinstance(row[0], str) and not row[0].strip()):
+                # But has data in other columns
+                if any(cell.strip() if isinstance(cell, str) else cell for cell in row[1:]):
+                    empty_first_column.append(row_idx)
+
+            # Check for incomplete rows (some columns filled, many empty)
+            filled_cells = sum(1 for cell in row if cell and (not isinstance(cell, str) or cell.strip()))
+            total_cells = len(row)
+
+            if filled_cells > 0:
+                # If less than 30% of cells are filled (but not completely empty)
+                if filled_cells / total_cells < 0.3 and filled_cells < total_cells:
+                    very_sparse_rows.append((row_idx, filled_cells, total_cells))
+
+                # Check for duplicate entries in first column (for Drug Chart)
+                if self.current_preset.get() == "Drug Chart (11 columns)" and row[0]:
+                    key = str(row[0]).strip().lower()
+                    if key:
+                        if key in duplicate_entries:
+                            duplicate_entries[key].append(row_idx)
+                        else:
+                            duplicate_entries[key] = [row_idx]
+
+        # Generate warnings
+        if empty_first_column:
+            if len(empty_first_column) <= 5:
+                rows_str = ", ".join(map(str, empty_first_column))
+            else:
+                rows_str = ", ".join(map(str, empty_first_column[:5])) + f", ... ({len(empty_first_column)} total)"
+            warnings.append(f"⚠ Empty first column in rows: {rows_str}\n  (First column should contain the main identifier)")
+
+        if very_sparse_rows:
+            if len(very_sparse_rows) <= 3:
+                rows_str = ", ".join(f"{r} ({f}/{t} filled)" for r, f, t in very_sparse_rows)
+            else:
+                rows_str = ", ".join(f"{r} ({f}/{t})" for r, f, t in very_sparse_rows[:3]) + f"... ({len(very_sparse_rows)} total)"
+            warnings.append(f"⚠ Incomplete rows detected: {rows_str}\n  (Less than 30% of cells filled)")
+
+        # Check for duplicates (only if there are duplicates)
+        actual_duplicates = {k: v for k, v in duplicate_entries.items() if len(v) > 1}
+        if actual_duplicates:
+            if len(actual_duplicates) <= 3:
+                dup_str = "\n  ".join(f"{k}: rows {', '.join(map(str, v))}" for k, v in list(actual_duplicates.items())[:3])
+            else:
+                dup_str = "\n  ".join(f"{k}: rows {', '.join(map(str, v))}" for k, v in list(actual_duplicates.items())[:3])
+                dup_str += f"\n  ... ({len(actual_duplicates)} duplicate entries total)"
+            warnings.append(f"⚠ Duplicate entries found:\n  {dup_str}")
+
+        return warnings
+
     def export_to_excel(self):
         """Export data to Excel (route to appropriate format)"""
+        # Validate data quality first
+        warnings = self.validate_data_quality()
+
+        if warnings:
+            warning_text = "Data quality issues detected:\n\n" + "\n\n".join(warnings)
+            warning_text += "\n\nDo you want to continue with export anyway?"
+
+            response = messagebox.askyesno(
+                "Data Quality Warnings",
+                warning_text,
+                icon='warning'
+            )
+
+            if not response:
+                return  # User chose not to export
+
         format_type = self.export_format.get()
 
         if format_type == "master_chart":
