@@ -330,6 +330,8 @@ class ExcelMasterChartApp:
         view_menu.add_checkbutton(label="Live Color Preview", variable=self.live_preview_var,
                                   command=self.toggle_color_preview)
         view_menu.add_command(label="Preview Colors", command=self.preview_colors)
+        view_menu.add_separator()
+        view_menu.add_command(label="Refresh Auto-Complete", command=self.refresh_autocomplete)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -673,20 +675,64 @@ class ExcelMasterChartApp:
         # Update row count
         self.update_row_count()
 
+    def get_column_unique_values(self, col_idx, max_values=50):
+        """Get unique non-empty values from a column for auto-complete
+
+        Args:
+            col_idx: Column index
+            max_values: Maximum number of unique values to return (prevents huge dropdowns)
+
+        Returns:
+            List of unique values sorted alphabetically
+        """
+        if not self.sheet:
+            return []
+
+        data = self.sheet.get_sheet_data()
+        unique_values = set()
+
+        for row in data:
+            if col_idx < len(row):
+                value = row[col_idx]
+                if value and isinstance(value, str):
+                    value = value.strip()
+                    if value:  # Non-empty after stripping
+                        unique_values.add(value)
+
+        # Sort and limit
+        sorted_values = sorted(list(unique_values))
+        return sorted_values[:max_values]
+
     def configure_dropdown_validations(self):
-        """Configure dropdown validation for columns that match predefined field types"""
+        """Configure dropdown validation with both predefined options and auto-complete from previous entries"""
         if not self.sheet or not self.current_columns:
             return
 
         # Map columns to their indices and check if they have dropdown options
         for col_idx, col_name in enumerate(self.current_columns):
-            # Check if this column name matches any dropdown option keys
+            dropdown_values = []
+
+            # Get predefined dropdown options if available
             if col_name in DROPDOWN_OPTIONS:
+                dropdown_values = DROPDOWN_OPTIONS[col_name].copy()
+
+            # Get unique values from previous entries (auto-complete)
+            previous_values = self.get_column_unique_values(col_idx, max_values=30)
+
+            # Merge: Add previous values that aren't already in predefined options
+            # This prevents duplicates while preserving the order of predefined options
+            if previous_values:
+                for prev_val in previous_values:
+                    if prev_val not in dropdown_values:
+                        dropdown_values.append(prev_val)
+
+            # Only configure dropdown if we have values
+            if dropdown_values:
                 # Set dropdown for this entire column
                 try:
                     self.sheet.dropdown(
                         col_idx,
-                        values=DROPDOWN_OPTIONS[col_name],
+                        values=dropdown_values,
                         set_value=None,  # Don't pre-fill
                         state="normal",  # Allow custom text too
                         redraw=True
@@ -699,7 +745,7 @@ class ExcelMasterChartApp:
                             self.sheet.dropdown(
                                 row_idx,
                                 col_idx,
-                                values=DROPDOWN_OPTIONS[col_name],
+                                values=dropdown_values,
                                 set_value=None,
                                 state="normal",
                                 redraw=False
@@ -926,6 +972,8 @@ class ExcelMasterChartApp:
         menu.add_command(label="Clear Selected Cells", command=lambda: self.sheet.delete_key())
         menu.add_command(label="Fill Down", command=self.fill_down)
         menu.add_command(label="Fill Right", command=self.fill_right)
+        menu.add_separator()
+        menu.add_command(label="Refresh Auto-Complete", command=self.refresh_autocomplete)
 
         try:
             menu.tk_popup(event.x_root, event.y_root)
@@ -1176,6 +1224,12 @@ class ExcelMasterChartApp:
         except:
             pass
 
+    def refresh_autocomplete(self):
+        """Refresh auto-complete suggestions based on current data"""
+        self.configure_dropdown_validations()
+        messagebox.showinfo("Auto-Complete Refreshed",
+                          "Auto-complete suggestions have been updated based on your current data.")
+
     def preview_colors(self):
         """Show color assignment preview dialog"""
         data = self.sheet.get_sheet_data()
@@ -1381,6 +1435,10 @@ class ExcelMasterChartApp:
 
         # Load data
         self.sheet.set_sheet_data(data["rows"])
+
+        # Refresh dropdowns to include auto-complete from loaded data
+        self.configure_dropdown_validations()
+
         self.update_row_count()
         self.mark_saved()
 
@@ -1945,7 +2003,8 @@ class ExcelMasterChartApp:
 
 2. ENTER DATA
    - Click any cell to start typing
-   - Dropdowns appear automatically for fields like Route, Contraindications
+   - Dropdowns show both standard options AND your previous entries
+   - Use View > Refresh Auto-Complete to update suggestions
    - Press Tab to move right, Enter to move down
    - Right-click for more options
 
@@ -1982,7 +2041,8 @@ Features:
 ✓ Auto-save and crash recovery
 ✓ Right-click context menu
 ✓ Live color preview
-✓ Data validation dropdowns for common medical fields
+✓ Data validation dropdowns with auto-complete
+✓ Smart suggestions from your previous entries
 
 Created with Python, tkinter, tksheet, and openpyxl
 
