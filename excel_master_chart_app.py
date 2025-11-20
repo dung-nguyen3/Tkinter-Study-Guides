@@ -20,12 +20,13 @@ import subprocess
 import platform
 import os
 import json
+import csv
 import threading
 import time
 from pathlib import Path
 from datetime import datetime
 from tksheet import Sheet
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
@@ -295,6 +296,15 @@ class ExcelMasterChartApp:
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="New", command=self.new_file, accelerator="Cmd+N")
         file_menu.add_command(label="Open...", command=self.load_data_json, accelerator="Cmd+O")
+        file_menu.add_separator()
+
+        # Import submenu
+        import_menu = tk.Menu(file_menu, tearoff=0)
+        file_menu.add_cascade(label="Import", menu=import_menu)
+        import_menu.add_command(label="From CSV...", command=self.import_from_csv)
+        import_menu.add_command(label="From Excel...", command=self.import_from_excel)
+
+        file_menu.add_separator()
         file_menu.add_command(label="Save", command=self.save_file, accelerator="Cmd+S")
         file_menu.add_command(label="Save As...", command=self.save_data_json)
         file_menu.add_separator()
@@ -1480,6 +1490,176 @@ class ExcelMasterChartApp:
 
         self.update_row_count()
         self.mark_saved()
+
+    # ========================================================================
+    # IMPORT FROM CSV/EXCEL
+    # ========================================================================
+
+    def import_from_csv(self):
+        """Import data from CSV file"""
+        filename = filedialog.askopenfilename(
+            title="Import from CSV",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            initialdir=self.output_directory.get()
+        )
+
+        if not filename:
+            return
+
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                rows = list(reader)
+
+            if not rows:
+                messagebox.showwarning("Empty File", "The CSV file is empty.")
+                return
+
+            # First row is headers
+            headers = rows[0]
+            data_rows = rows[1:]
+
+            self._import_data(headers, data_rows, filename)
+
+        except Exception as e:
+            messagebox.showerror("Import Error", f"Failed to import CSV:\n{str(e)}")
+
+    def import_from_excel(self):
+        """Import data from Excel file"""
+        filename = filedialog.askopenfilename(
+            title="Import from Excel",
+            filetypes=[("Excel files", "*.xlsx *.xls"), ("All files", "*.*")],
+            initialdir=self.output_directory.get()
+        )
+
+        if not filename:
+            return
+
+        try:
+            wb = load_workbook(filename, data_only=True)
+            ws = wb.active
+
+            # Get all rows
+            rows = list(ws.values)
+
+            if not rows:
+                messagebox.showwarning("Empty File", "The Excel file is empty.")
+                return
+
+            # First row is headers
+            headers = [str(cell) if cell is not None else "" for cell in rows[0]]
+            data_rows = [[str(cell) if cell is not None else "" for cell in row] for row in rows[1:]]
+
+            self._import_data(headers, data_rows, filename)
+
+        except Exception as e:
+            messagebox.showerror("Import Error", f"Failed to import Excel:\n{str(e)}")
+
+    def _import_data(self, import_headers, import_data, filename):
+        """Process imported data with column mapping and append/replace options
+
+        Args:
+            import_headers: List of column names from imported file
+            import_data: List of data rows
+            filename: Source filename for display
+        """
+        # Ask user: Append or Replace?
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Import Options")
+        dialog.geometry("500x300")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        ttk.Label(dialog, text=f"Importing from:\n{Path(filename).name}",
+                 font=("", 12, "bold")).pack(pady=10)
+
+        ttk.Label(dialog, text=f"Found {len(import_data)} data rows with {len(import_headers)} columns").pack()
+
+        # Show preview of headers
+        preview_text = "Columns: " + ", ".join(import_headers[:5])
+        if len(import_headers) > 5:
+            preview_text += f", ... ({len(import_headers)} total)"
+        ttk.Label(dialog, text=preview_text, wraplength=450).pack(pady=10)
+
+        # Import mode selection
+        mode_var = tk.StringVar(value="append")
+        ttk.Radiobutton(dialog, text="Append to existing data", variable=mode_var,
+                       value="append").pack(anchor=tk.W, padx=30, pady=5)
+        ttk.Radiobutton(dialog, text="Replace all existing data", variable=mode_var,
+                       value="replace").pack(anchor=tk.W, padx=30, pady=5)
+
+        result = {"confirmed": False}
+
+        def confirm_import():
+            result["confirmed"] = True
+            result["mode"] = mode_var.get()
+            dialog.destroy()
+
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=20)
+        ttk.Button(button_frame, text="Import", command=confirm_import).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+        dialog.wait_window()
+
+        if not result.get("confirmed"):
+            return
+
+        # Map imported columns to current columns
+        mapped_data = self._map_columns(import_headers, import_data)
+
+        # Apply import
+        if result["mode"] == "replace":
+            self.sheet.set_sheet_data(mapped_data)
+        else:  # append
+            current_data = self.sheet.get_sheet_data()
+            # Remove trailing empty rows from current data
+            non_empty_current = [row for row in current_data if any(cell.strip() if isinstance(cell, str) else cell for cell in row)]
+            self.sheet.set_sheet_data(non_empty_current + mapped_data)
+
+        # Refresh auto-complete with new data
+        self.configure_dropdown_validations()
+
+        self.update_row_count()
+        self.mark_unsaved()
+        messagebox.showinfo("Import Complete",
+                          f"Successfully imported {len(mapped_data)} rows!")
+
+    def _map_columns(self, import_headers, import_data):
+        """Map imported columns to current column structure
+
+        Args:
+            import_headers: List of imported column names
+            import_data: List of imported data rows
+
+        Returns:
+            List of data rows mapped to current column structure
+        """
+        # Create column mapping (case-insensitive match)
+        import_headers_lower = [h.lower().strip() for h in import_headers]
+        current_headers_lower = [h.lower().strip() for h in self.current_columns]
+
+        column_map = {}  # Maps import column index to current column index
+        for imp_idx, imp_header in enumerate(import_headers_lower):
+            if imp_header in current_headers_lower:
+                curr_idx = current_headers_lower.index(imp_header)
+                column_map[imp_idx] = curr_idx
+
+        # Map data rows
+        mapped_rows = []
+        for row in import_data:
+            # Skip completely empty rows
+            if not any(cell.strip() if isinstance(cell, str) else cell for cell in row):
+                continue
+
+            new_row = [""] * len(self.current_columns)
+            for imp_idx, curr_idx in column_map.items():
+                if imp_idx < len(row):
+                    new_row[curr_idx] = row[imp_idx]
+
+            mapped_rows.append(new_row)
+
+        return mapped_rows
 
     def load_recent_files(self):
         """Load recent files list"""
