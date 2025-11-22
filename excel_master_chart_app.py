@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Excel Master Chart Creator v2.6 - Desktop Application
+Study Guide Creator v3.0 - Desktop Application
 A tksheet-based GUI application for creating formatted Excel master charts
-with auto-color assignment, professional formatting, and multi-format export.
+AND converting Markdown study guides to styled Word documents.
 
-Version 2.6 Features:
+Version 3.0 Features:
 - Excel-like grid interface with tksheet
 - Right-click context menu
 - Auto-save and crash recovery
 - Live color preview
 - 3-shade color system
-- Two export formats: Master Chart (single sheet) and Comprehensive (4-tab)
+- Two Excel export formats: Master Chart (single sheet) and Comprehensive (4-tab)
 - Data validation dropdowns for common medical fields (Route, Contraindications, etc.)
+- NEW: Markdown to Word conversion with styled tables and clinical pearls
+- NEW: Word tab for importing .md files and exporting to .docx
 """
 
 import tkinter as tk
@@ -30,6 +32,20 @@ from tksheet import Sheet
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+
+# python-docx for Word document generation
+try:
+    from docx import Document
+    from docx.shared import Pt, RGBColor, Inches, Twips
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+    print("Warning: python-docx not installed. Word export will be disabled.")
+    print("Install with: pip install python-docx")
 
 # ============================================================================
 # COLOR CONSTANTS - 3-Shade System for Professional Gradients
@@ -64,6 +80,40 @@ MNEMONIC_BG = 'E6F3FF'        # Light blue for mnemonics
 CLINICAL_PEARL_BG = 'E8F5E9'   # Light green for clinical pearls
 ANALOGY_BOX_BG = 'FFF9E6'      # Light yellow for analogies
 MAIN_TITLE_COLOR = '4472C4'    # Dark blue for sheet titles
+
+# Word document color themes (from LO Word template)
+WORD_COLOR_THEMES = {
+    'Purple - General Topics': {
+        'header': 'D1C4E9',
+        'header_text': (74, 20, 140),
+        'light': 'EDE7F6',
+        'name': 'purple'
+    },
+    'Blue - Diagnostic': {
+        'header': 'B3E5FC',
+        'header_text': (1, 87, 155),
+        'light': 'E1F5FE',
+        'name': 'blue'
+    },
+    'Green - Normal Findings': {
+        'header': 'C8E6C9',
+        'header_text': (27, 94, 32),
+        'light': 'E8F5E9',
+        'name': 'green'
+    },
+    'Red - Pathology': {
+        'header': 'FFCDD2',
+        'header_text': (183, 28, 28),
+        'light': 'FFEBEE',
+        'name': 'red'
+    },
+    'Auto (Rotate Colors)': {
+        'header': None,  # Will use COLOR_SETS rotation
+        'header_text': (0, 0, 0),
+        'light': None,
+        'name': 'auto'
+    }
+}
 
 # Header formatting constants (backward compatible)
 HEADER_BG_COLOR = "#4472C4"
@@ -245,7 +295,7 @@ def hex_to_rgb(hex_color):
 class ExcelMasterChartApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Excel Master Chart Creator v2.6")
+        self.root.title("Study Guide Creator v3.0")
         self.root.geometry("1400x800")
         self.root.minsize(800, 600)  # Set minimum window size (reduced for better flexibility)
 
@@ -326,6 +376,15 @@ class ExcelMasterChartApp:
 
         file_menu.add_separator()
         file_menu.add_command(label="Export to Excel...", command=self.export_to_excel)
+        file_menu.add_separator()
+
+        # Word/Markdown submenu
+        word_menu = tk.Menu(file_menu, tearoff=0)
+        file_menu.add_cascade(label="Markdown/Word", menu=word_menu)
+        word_menu.add_command(label="Import Markdown File...", command=self.browse_markdown_file)
+        word_menu.add_command(label="Preview Markdown...", command=self.preview_markdown)
+        word_menu.add_command(label="Convert to Word...", command=self.convert_markdown_to_word)
+
         file_menu.add_separator()
         file_menu.add_command(label="Quit", command=self.on_closing, accelerator="Cmd+Q")
 
@@ -412,6 +471,8 @@ class ExcelMasterChartApp:
         # Create notebook for tabbed ribbon
         self.ribbon_notebook = ttk.Notebook(self.ribbon_container)
         self.ribbon_notebook.pack(fill=tk.BOTH, expand=True)
+        # Bind tab change event to manage sheet visibility
+        self.ribbon_notebook.bind("<<NotebookTabChanged>>", self._on_ribbon_tab_changed)
 
         # HOME TAB
         home_tab = ttk.Frame(self.ribbon_notebook, padding="5")
@@ -529,11 +590,72 @@ class ExcelMasterChartApp:
         # === EXPORT DROPDOWN ===
         export_menu = tk.Menu(self.root, tearoff=0)
         export_menu.add_command(label="Export to Excel", command=self.export_to_excel)
+        export_menu.add_command(label="Export to CSV", command=self.export_to_csv)
         export_menu.add_separator()
         export_menu.add_command(label="Validate Data", command=self.show_data_validation)
 
         export_btn = ttk.Menubutton(export_tab, text="Export ▼", menu=export_menu)
         export_btn.pack(side=tk.LEFT, padx=2, pady=2)
+
+        # === WORD TAB (Markdown to Word conversion) ===
+        word_tab = ttk.Frame(self.ribbon_notebook, padding="5")
+        self.ribbon_notebook.add(word_tab, text="Word")
+
+        # Top control panel
+        control_panel = ttk.Frame(word_tab)
+        control_panel.pack(fill=tk.X, padx=0, pady=0)
+
+        # Markdown file selection
+        md_frame = ttk.Frame(control_panel)
+        md_frame.pack(side=tk.LEFT, padx=2, pady=2)
+
+        ttk.Label(md_frame, text="Markdown:").pack(side=tk.LEFT, padx=2)
+        self.markdown_path_var = tk.StringVar(value="No file selected")
+        self.md_path_label = ttk.Label(md_frame, textvariable=self.markdown_path_var, width=30)
+        self.md_path_label.pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(md_frame, text="Browse...", command=self.browse_markdown_file).pack(side=tk.LEFT, padx=2)
+
+        # Color theme dropdown
+        theme_frame = ttk.Frame(control_panel)
+        theme_frame.pack(side=tk.LEFT, padx=10, pady=2)
+
+        ttk.Label(theme_frame, text="Theme:").pack(side=tk.LEFT, padx=2)
+        self.word_theme_var = tk.StringVar(value="Purple - General Topics")
+        theme_combo = ttk.Combobox(
+            theme_frame,
+            textvariable=self.word_theme_var,
+            values=list(WORD_COLOR_THEMES.keys()),
+            state="readonly",
+            width=20
+        )
+        theme_combo.pack(side=tk.LEFT, padx=2)
+
+        # Action buttons
+        ttk.Button(control_panel, text="Convert to Word", command=self.convert_markdown_to_word).pack(side=tk.LEFT, padx=5, pady=2)
+
+        # Preview panel (scrollable text widget showing formatted content)
+        preview_frame = ttk.Frame(word_tab)
+        preview_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(preview_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Create text widget for preview
+        self.word_preview_text = tk.Text(
+            preview_frame,
+            wrap=tk.WORD,
+            font=("Courier", 10),
+            yscrollcommand=scrollbar.set,
+            state=tk.DISABLED
+        )
+        scrollbar.config(command=self.word_preview_text.yview)
+        self.word_preview_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Store markdown content
+        self.markdown_content = ""
+        self.markdown_file_path = None
 
     def toggle_ribbon(self):
         """Toggle ribbon visibility"""
@@ -550,6 +672,23 @@ class ExcelMasterChartApp:
 
         # Force window to update layout
         self.root.update_idletasks()
+
+    def _on_ribbon_tab_changed(self, event=None):
+        """Handle ribbon tab changes - show/hide sheet based on active tab"""
+        selected_tab_index = self.ribbon_notebook.index(self.ribbon_notebook.select())
+        tab_names = ["Home", "Data", "Export", "Word"]
+
+        if selected_tab_index < len(tab_names):
+            selected_tab = tab_names[selected_tab_index]
+
+            # Hide sheet container when Word tab is selected
+            if selected_tab == "Word":
+                if self.sheet_container and self.sheet_container.winfo_exists():
+                    self.sheet_container.grid_forget()
+            # Show sheet container for all Excel tabs
+            else:
+                if self.sheet_container and self.sheet_container.winfo_exists():
+                    self.sheet_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
     def create_data_grid_ribbon_style(self):
         """Create maximized data grid for ribbon interface"""
@@ -1864,7 +2003,7 @@ class ExcelMasterChartApp:
     # ========================================================================
 
     def import_from_csv(self):
-        """Import data from CSV file"""
+        """Import data from CSV file with optional color metadata restoration"""
         filename = filedialog.askopenfilename(
             title="Import from CSV",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
@@ -1875,9 +2014,15 @@ class ExcelMasterChartApp:
             return
 
         try:
-            with open(filename, 'r', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                rows = list(reader)
+            # Try to open UTF-8 with BOM first (Excel compatibility), fallback to regular UTF-8
+            try:
+                with open(filename, 'r', encoding='utf-8-sig') as f:
+                    reader = csv.reader(f)
+                    rows = list(reader)
+            except:
+                with open(filename, 'r', encoding='utf-8') as f:
+                    reader = csv.reader(f)
+                    rows = list(reader)
 
             if not rows:
                 messagebox.showwarning("Empty File", "The CSV file is empty.")
@@ -1887,13 +2032,23 @@ class ExcelMasterChartApp:
             headers = rows[0]
             data_rows = rows[1:]
 
-            self._import_data(headers, data_rows, filename)
+            # Check for companion metadata file
+            metadata_path = Path(filename).with_suffix('.csv.meta')
+            metadata = None
+            if metadata_path.exists():
+                try:
+                    with open(metadata_path, 'r', encoding='utf-8') as f:
+                        metadata = json.load(f)
+                except:
+                    metadata = None
+
+            self._import_data(headers, data_rows, filename, metadata=metadata)
 
         except Exception as e:
             messagebox.showerror("Import Error", f"Failed to import CSV:\n{str(e)}")
 
     def import_from_excel(self):
-        """Import data from Excel file"""
+        """Import data from Excel file with multi-sheet support"""
         filename = filedialog.askopenfilename(
             title="Import from Excel",
             filetypes=[("Excel files", "*.xlsx *.xls"), ("All files", "*.*")],
@@ -1905,7 +2060,15 @@ class ExcelMasterChartApp:
 
         try:
             wb = load_workbook(filename, data_only=True)
-            ws = wb.active
+
+            # If multiple sheets, ask user which to import
+            if len(wb.sheetnames) > 1:
+                selected_sheet = self._show_sheet_selector_dialog(wb.sheetnames)
+                if not selected_sheet:
+                    return
+                ws = wb[selected_sheet]
+            else:
+                ws = wb.active
 
             # Get all rows
             rows = list(ws.values)
@@ -1916,20 +2079,75 @@ class ExcelMasterChartApp:
 
             # First row is headers
             headers = [str(cell) if cell is not None else "" for cell in rows[0]]
-            data_rows = [[str(cell) if cell is not None else "" for cell in row] for row in rows[1:]]
+            # Preserve data types when converting to strings
+            data_rows = []
+            for row in rows[1:]:
+                converted_row = []
+                for cell in row:
+                    if cell is None:
+                        converted_row.append("")
+                    else:
+                        converted_row.append(str(cell))
+                data_rows.append(converted_row)
 
             self._import_data(headers, data_rows, filename)
 
         except Exception as e:
             messagebox.showerror("Import Error", f"Failed to import Excel:\n{str(e)}")
 
-    def _import_data(self, import_headers, import_data, filename):
+    def _show_sheet_selector_dialog(self, sheet_names):
+        """Show dialog to select which sheet to import from multi-sheet workbook"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Select Sheet")
+        dialog.geometry("400x300")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        ttk.Label(dialog, text="This workbook has multiple sheets.\nSelect which sheet to import:",
+                 font=("", 11)).pack(pady=15)
+
+        # Listbox for sheet selection
+        frame = ttk.Frame(dialog)
+        frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+
+        scrollbar = ttk.Scrollbar(frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        listbox = tk.Listbox(frame, yscrollcommand=scrollbar.set, height=10)
+        scrollbar.config(command=listbox.yview)
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        for sheet_name in sheet_names:
+            listbox.insert(tk.END, sheet_name)
+
+        # Select first sheet by default
+        listbox.selection_set(0)
+        listbox.activate(0)
+
+        result = {"selected": None}
+
+        def confirm_selection():
+            selection = listbox.curselection()
+            if selection:
+                result["selected"] = sheet_names[selection[0]]
+            dialog.destroy()
+
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=15)
+        ttk.Button(button_frame, text="Import", command=confirm_selection).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+        dialog.wait_window()
+        return result.get("selected")
+
+    def _import_data(self, import_headers, import_data, filename, metadata=None):
         """Process imported data with column mapping and append/replace options
 
         Args:
             import_headers: List of column names from imported file
             import_data: List of data rows
             filename: Source filename for display
+            metadata: Optional metadata dict with color map from CSV export
         """
         # Ask user: Append or Replace?
         dialog = tk.Toplevel(self.root)
@@ -1991,24 +2209,35 @@ class ExcelMasterChartApp:
         self.update_row_count()
         self.mark_unsaved()
 
-        # Automatically apply color coding if Live Preview is enabled
-        if self.live_preview_var.get():
-            self.apply_live_colors()
-
-        # Ask user if they want to apply colors
-        apply_colors = messagebox.askyesno(
-            "Import Complete",
-            f"Successfully imported {len(mapped_data)} rows!\n\n"
-            "Would you like to apply color coding to drug classes now?"
-        )
-
-        if apply_colors:
-            # Enable live preview and apply colors
+        # Automatically apply color coding if metadata exists (from CSV export)
+        if metadata and 'color_map' in metadata:
+            # Colors were saved with this CSV - restore them
             self.live_preview_var.set(True)
             self.apply_live_colors()
-            messagebox.showinfo("Colors Applied",
-                              "Color coding has been applied to all drug classes.\n\n"
-                              "Live Color Preview is now enabled.")
+            messagebox.showinfo(
+                "Colors Restored",
+                f"Successfully imported {len(mapped_data)} rows with saved color coding!\n\n"
+                "Color coding has been automatically restored.\n"
+                "Live Color Preview is now enabled."
+            )
+        # Automatically apply color coding if Live Preview is enabled
+        elif self.live_preview_var.get():
+            self.apply_live_colors()
+        else:
+            # Ask user if they want to apply colors
+            apply_colors = messagebox.askyesno(
+                "Import Complete",
+                f"Successfully imported {len(mapped_data)} rows!\n\n"
+                "Would you like to apply color coding to drug classes now?"
+            )
+
+            if apply_colors:
+                # Enable live preview and apply colors
+                self.live_preview_var.set(True)
+                self.apply_live_colors()
+                messagebox.showinfo("Colors Applied",
+                                  "Color coding has been applied to all drug classes.\n\n"
+                                  "Live Color Preview is now enabled.")
 
     def _map_columns(self, import_headers, import_data):
         """Map imported columns to current column structure
@@ -2349,6 +2578,69 @@ class ExcelMasterChartApp:
 
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export comprehensive chart:\n\n{str(e)}")
+
+    def export_to_csv(self):
+        """Export grid data to CSV with color metadata"""
+        # Get data
+        data = self.sheet.get_sheet_data()
+        non_empty = [row for row in data if any(cell.strip() if isinstance(cell, str) else cell for cell in row)]
+
+        # Validation
+        if not non_empty:
+            messagebox.showwarning("No Data", "Please add some data before exporting.")
+            return
+
+        # Show file save dialog
+        output_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            initialdir=self.output_directory.get(),
+            initialfile=self.output_filename.get().replace(".xlsx", ".csv")
+        )
+
+        if not output_path:
+            return  # User cancelled
+
+        output_path = Path(output_path)
+        metadata_path = output_path.with_suffix('.csv.meta')
+
+        try:
+            # Export CSV with UTF-8 BOM encoding (Excel compatible)
+            with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
+                writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
+                # Write header row
+                writer.writerow(self.current_columns)
+                # Write data rows
+                for row in non_empty:
+                    cleaned_row = ['' if cell is None else str(cell) for cell in row]
+                    writer.writerow(cleaned_row)
+
+            # Save color metadata to companion file
+            try:
+                color_map = self.calculate_color_assignments_from_data(non_empty)
+                metadata = {
+                    'headers': self.current_columns,
+                    'color_map': color_map,
+                    'row_count': len(non_empty),
+                    'preset': self.current_preset.get(),
+                    'export_date': datetime.now().isoformat()
+                }
+
+                with open(metadata_path, 'w', encoding='utf-8') as f:
+                    json.dump(metadata, f, indent=2)
+            except Exception as e:
+                # Metadata save failed, but CSV is still created
+                pass
+
+            messagebox.showinfo(
+                "Export Successful",
+                f"CSV exported successfully!\n\nLocation:\n{output_path}\n\nRows exported: {len(non_empty)}\n\nColor metadata saved to: {metadata_path.name}"
+            )
+
+            self.mark_saved()
+
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export CSV file:\n\n{str(e)}")
 
     def group_by_drug_class(self, data):
         """Group rows by first column (Drug Class)"""
@@ -2751,6 +3043,565 @@ Created with Python, tkinter, tksheet, and openpyxl
             self.autosave_path.unlink()
 
         self.root.destroy()
+
+    # ========================================================================
+    # WORD TAB - MARKDOWN TO WORD CONVERSION
+    # ========================================================================
+
+    def browse_markdown_file(self):
+        """Open file dialog to select a markdown file and auto-display preview"""
+        file_path = filedialog.askopenfilename(
+            title="Select Markdown File",
+            filetypes=[
+                ("Markdown files", "*.md"),
+                ("Text files", "*.txt"),
+                ("All files", "*.*")
+            ]
+        )
+
+        if file_path:
+            self.markdown_file_path = Path(file_path)
+            # Show truncated path in label
+            display_name = self.markdown_file_path.name
+            if len(display_name) > 28:
+                display_name = display_name[:25] + "..."
+            self.markdown_path_var.set(display_name)
+
+            # Read the file
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    self.markdown_content = f.read()
+                self.status_label.config(text=f"● Loaded: {self.markdown_file_path.name}", foreground="green")
+
+                # Auto-display preview in the Word tab
+                self._display_word_preview()
+            except Exception as e:
+                messagebox.showerror("Error", f"Could not read file:\n{str(e)}")
+                self.markdown_content = ""
+
+    def _display_word_preview(self):
+        """Display formatted Word preview in the preview panel"""
+        if not self.markdown_content:
+            return
+
+        try:
+            # Parse the markdown
+            parsed = self.parse_markdown(self.markdown_content)
+
+            # Format for display
+            preview_lines = []
+            preview_lines.append("=" * 80)
+            preview_lines.append("WORD DOCUMENT PREVIEW")
+            preview_lines.append("=" * 80)
+            preview_lines.append("")
+
+            # Add title
+            if parsed['title']:
+                preview_lines.append(f"{'─' * 80}")
+                preview_lines.append(f"{parsed['title'].upper()}")
+                preview_lines.append(f"{'─' * 80}")
+                preview_lines.append("")
+
+            # Process sections
+            for section_idx, section in enumerate(parsed['sections']):
+                # Add section heading
+                heading_char = "═" if section['level'] == 2 else "─"
+                preview_lines.append(f"{heading_char * 80}")
+                preview_lines.append(f"{section['title']}")
+                preview_lines.append(f"{heading_char * 80}")
+                preview_lines.append("")
+
+                # Add section content
+                for content_type, content in section['content']:
+                    if content_type == 'text':
+                        preview_lines.append(f"{content}")
+                        preview_lines.append("")
+                    elif content_type == 'list':
+                        preview_lines.append(f"  • {content}")
+
+                # Add tables in this section
+                for table_data in parsed['tables']:
+                    if table_data.get('section') == section['title']:
+                        preview_lines.append("")
+                        preview_lines.append("[TABLE]")
+                        preview_lines.append("─" * 80)
+                        # Add headers
+                        headers_str = " | ".join(table_data['headers'])
+                        preview_lines.append(headers_str)
+                        preview_lines.append("─" * 80)
+                        # Add rows
+                        for row in table_data['rows']:
+                            row_str = " | ".join(str(cell) for cell in row)
+                            preview_lines.append(row_str)
+                        preview_lines.append("─" * 80)
+                        preview_lines.append("")
+
+                # Add blockquotes in this section
+                for bq in parsed['blockquotes']:
+                    if bq.get('section') == section['title']:
+                        preview_lines.append("")
+                        preview_lines.append("┌" + "─" * 78 + "┐")
+                        preview_lines.append("│ " + bq['content'][:76] + (" │" if len(bq['content']) <= 76 else "...│"))
+                        if len(bq['content']) > 76:
+                            # Wrap long blockquotes
+                            remaining = bq['content'][76:]
+                            while remaining:
+                                chunk = remaining[:76]
+                                preview_lines.append("│ " + chunk.ljust(76) + " │")
+                                remaining = remaining[76:]
+                        preview_lines.append("└" + "─" * 78 + "┘")
+                        preview_lines.append("")
+
+                preview_lines.append("")
+
+            # Update the preview text widget
+            self.word_preview_text.config(state=tk.NORMAL)
+            self.word_preview_text.delete("1.0", tk.END)
+            self.word_preview_text.insert("1.0", "\n".join(preview_lines))
+            self.word_preview_text.config(state=tk.DISABLED)
+
+        except Exception as e:
+            # Show error in preview
+            self.word_preview_text.config(state=tk.NORMAL)
+            self.word_preview_text.delete("1.0", tk.END)
+            self.word_preview_text.insert("1.0", f"Error displaying preview:\n{str(e)}")
+            self.word_preview_text.config(state=tk.DISABLED)
+
+    def preview_markdown(self):
+        """Show a preview of the parsed markdown content"""
+        if not self.markdown_content:
+            messagebox.showwarning("No File", "Please select a markdown file first.")
+            return
+
+        # Create preview window
+        preview_win = tk.Toplevel(self.root)
+        preview_win.title("Markdown Preview")
+        preview_win.geometry("800x600")
+        preview_win.transient(self.root)
+
+        # Create text widget with scrollbar
+        frame = ttk.Frame(preview_win)
+        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        text = tk.Text(frame, wrap=tk.WORD, font=("Courier", 11))
+        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=text.yview)
+        text.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Parse and display structured content
+        parsed = self.parse_markdown(self.markdown_content)
+        preview_text = self.format_parsed_preview(parsed)
+        text.insert("1.0", preview_text)
+        text.config(state=tk.DISABLED)
+
+        # Close button
+        ttk.Button(preview_win, text="Close", command=preview_win.destroy).pack(pady=10)
+
+    def parse_markdown(self, content):
+        """Parse markdown content into structured data with proper table and blockquote handling"""
+        lines = content.split('\n')
+        parsed = {
+            'title': '',
+            'sections': [],
+            'tables': [],
+            'blockquotes': [],
+            'lists': [],
+            'toc': []  # Table of Contents
+        }
+
+        # Track section hierarchy (stack of sections)
+        section_stack = []
+        current_section_title = None
+
+        # For collecting blockquote lines (preserves internal blank lines)
+        blockquote_lines = []
+        blockquote_start_idx = -1
+
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+
+            # Handle H1 (Title)
+            if stripped.startswith('# ') and not stripped.startswith('## '):
+                parsed['title'] = stripped[2:].strip()
+                current_section_title = parsed['title']
+                section_stack = []
+                i += 1
+                continue
+
+            # Handle H2 (Major sections)
+            if stripped.startswith('## '):
+                section_title = stripped[3:].strip()
+
+                # Check if this is Table of Contents (special handling)
+                if section_title.lower() in ['table of contents', 'toc', 'contents']:
+                    # Collect TOC lines until next ## or ### section
+                    toc_lines = []
+                    i += 1
+                    while i < len(lines):
+                        toc_line = lines[i].strip()
+                        if toc_line.startswith('## ') or toc_line.startswith('### '):
+                            break
+                        if toc_line:
+                            toc_lines.append(toc_line)
+                        i += 1
+                    parsed['toc'] = toc_lines
+                    continue
+
+                # Add new section
+                parsed['sections'].append({
+                    'level': 2,
+                    'title': section_title,
+                    'content': []
+                })
+                current_section_title = section_title
+                section_stack = [section_title]
+                i += 1
+                continue
+
+            # Handle H3 (Subsections)
+            if stripped.startswith('### '):
+                section_title = stripped[4:].strip()
+                parsed['sections'].append({
+                    'level': 3,
+                    'title': section_title,
+                    'content': []
+                })
+                current_section_title = section_title
+                section_stack = [parsed['sections'][-2]['title'] if len(parsed['sections']) > 1 else '', section_title]
+                i += 1
+                continue
+
+            # Handle blockquotes (consecutive lines starting with >)
+            if stripped.startswith('>'):
+                # Collect all consecutive blockquote lines (including internal blank lines)
+                blockquote_lines = []
+                blockquote_start_idx = i
+                while i < len(lines):
+                    current_line = lines[i].strip()
+                    if current_line.startswith('>'):
+                        # Add the content after the '>'
+                        quote_content = current_line[1:].strip()
+                        blockquote_lines.append(quote_content)
+                        i += 1
+                    elif not current_line:
+                        # Blank line - check if next non-empty line is also a blockquote
+                        peek_idx = i + 1
+                        while peek_idx < len(lines) and not lines[peek_idx].strip():
+                            peek_idx += 1
+
+                        if peek_idx < len(lines) and lines[peek_idx].strip().startswith('>'):
+                            # It's a continuation of blockquote, keep internal blank line
+                            blockquote_lines.append('')
+                            i += 1
+                        else:
+                            # End of blockquote
+                            break
+                    else:
+                        # Non-blockquote content, end blockquote
+                        break
+
+                # Save the complete blockquote
+                if blockquote_lines:
+                    # Clean up trailing empty lines
+                    while blockquote_lines and blockquote_lines[-1] == '':
+                        blockquote_lines.pop()
+
+                    parsed['blockquotes'].append({
+                        'content': '\n'.join(blockquote_lines),
+                        'section': current_section_title
+                    })
+                continue
+
+            # Handle tables (markdown tables: header, separator, rows)
+            if stripped.startswith('|'):
+                # Validate this is a proper markdown table
+                # Need: header row, separator row, at least one data row
+                table_lines = [stripped]
+                header_row = stripped
+
+                # Look for separator row (must be next non-empty line)
+                sep_idx = i + 1
+                while sep_idx < len(lines) and not lines[sep_idx].strip():
+                    sep_idx += 1
+
+                if sep_idx < len(lines):
+                    sep_line = lines[sep_idx].strip()
+                    # Valid separator: contains | and - and nothing else
+                    is_valid_separator = (sep_line.startswith('|') and
+                                        '|' in sep_line and
+                                        all(c in '|-: ' for c in sep_line))
+
+                    if is_valid_separator:
+                        # This is a valid table, collect all table rows
+                        current_table = {
+                            'headers': [c.strip() for c in header_row.split('|')[1:-1]],
+                            'rows': [],
+                            'section': current_section_title
+                        }
+
+                        # Skip to after separator
+                        i = sep_idx + 1
+
+                        # Collect data rows
+                        while i < len(lines):
+                            row_line = lines[i].strip()
+                            if row_line.startswith('|') and any(c not in '|- ' for c in row_line):
+                                # This is a data row
+                                cells = [c.strip() for c in row_line.split('|')[1:-1]]
+                                current_table['rows'].append(cells)
+                                i += 1
+                            elif not row_line:
+                                # Empty line, might be end of table
+                                i += 1
+                                break
+                            else:
+                                # Non-table content
+                                break
+
+                        # Add valid table to list
+                        if current_table['headers'] and current_table['rows']:
+                            parsed['tables'].append(current_table)
+                        continue
+
+            # Handle empty lines
+            if not stripped:
+                i += 1
+                continue
+
+            # Handle list items
+            if stripped.startswith('- ') or stripped.startswith('* '):
+                list_item = stripped[2:].strip()
+                if parsed['sections']:
+                    parsed['sections'][-1]['content'].append(('list', list_item))
+                i += 1
+                continue
+
+            # Handle regular text
+            if stripped and parsed['sections']:
+                parsed['sections'][-1]['content'].append(('text', stripped))
+
+            i += 1
+
+        return parsed
+
+    def format_parsed_preview(self, parsed):
+        """Format parsed markdown for preview display"""
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"TITLE: {parsed['title']}")
+        lines.append("=" * 60)
+        lines.append("")
+
+        # Show Table of Contents if present
+        if parsed.get('toc'):
+            lines.append(f"TABLE OF CONTENTS ({len(parsed['toc'])} items):")
+            for toc_item in parsed['toc'][:5]:
+                lines.append(f"  • {toc_item}")
+            if len(parsed['toc']) > 5:
+                lines.append(f"  ... and {len(parsed['toc']) - 5} more items")
+            lines.append("")
+
+        lines.append(f"SECTIONS FOUND: {len(parsed['sections'])}")
+        for sec in parsed['sections'][:10]:
+            prefix = "  " if sec['level'] == 2 else "    "
+            lines.append(f"{prefix}[H{sec['level']}] {sec['title']}")
+        if len(parsed['sections']) > 10:
+            lines.append(f"  ... and {len(parsed['sections']) - 10} more sections")
+
+        lines.append("")
+        lines.append(f"TABLES FOUND: {len(parsed['tables'])}")
+        for i, table in enumerate(parsed['tables'][:5]):
+            lines.append(f"  Table {i+1}: {len(table['headers'])} columns, {len(table['rows'])} rows (Section: {table['section'][:40]}...)")
+            lines.append(f"    Headers: {', '.join(table['headers'][:3])}...")
+        if len(parsed['tables']) > 5:
+            lines.append(f"  ... and {len(parsed['tables']) - 5} more tables")
+
+        lines.append("")
+        lines.append(f"BLOCKQUOTES (Clinical Pearls): {len(parsed['blockquotes'])}")
+        for i, bq in enumerate(parsed['blockquotes'][:5]):
+            preview = bq['content'][:50] + "..." if len(bq['content']) > 50 else bq['content']
+            lines.append(f"  [{i+1}] Section: {bq['section'][:30]}... | {preview}")
+        if len(parsed['blockquotes']) > 5:
+            lines.append(f"  ... and {len(parsed['blockquotes']) - 5} more blockquotes")
+
+        lines.append("")
+        lines.append("=" * 60)
+        lines.append("✓ All elements properly associated with their sections")
+        lines.append("✓ Ready to convert to Word document")
+        lines.append("=" * 60)
+
+        return '\n'.join(lines)
+
+    def convert_markdown_to_word(self):
+        """Convert loaded markdown to a styled Word document"""
+        if not DOCX_AVAILABLE:
+            messagebox.showerror(
+                "Missing Dependency",
+                "python-docx is not installed.\n\nInstall it with:\npip install python-docx"
+            )
+            return
+
+        if not self.markdown_content:
+            messagebox.showwarning("No File", "Please select a markdown file first.")
+            return
+
+        # Parse the markdown
+        parsed = self.parse_markdown(self.markdown_content)
+
+        # Get output file path
+        default_name = "Study_Guide.docx"
+        if self.markdown_file_path:
+            default_name = self.markdown_file_path.stem + ".docx"
+
+        output_path = filedialog.asksaveasfilename(
+            title="Save Word Document",
+            defaultextension=".docx",
+            filetypes=[("Word Document", "*.docx"), ("All files", "*.*")],
+            initialfile=default_name
+        )
+
+        if not output_path:
+            return
+
+        try:
+            # Create Word document
+            doc = Document()
+
+            # Set margins
+            for section in doc.sections:
+                section.top_margin = Inches(0.8)
+                section.bottom_margin = Inches(0.8)
+                section.left_margin = Inches(0.8)
+                section.right_margin = Inches(0.8)
+
+            # Get selected theme
+            theme_name = self.word_theme_var.get()
+            theme = WORD_COLOR_THEMES.get(theme_name, WORD_COLOR_THEMES['Purple - General Topics'])
+
+            # Add title
+            if parsed['title']:
+                title = doc.add_heading(parsed['title'], 0)
+                title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for run in title.runs:
+                    run.font.color.rgb = RGBColor(*theme['header_text'])
+
+            # Add Table of Contents if it exists (at the beginning, right after title)
+            if parsed['toc']:
+                doc.add_heading('Table of Contents', level=2)
+                for toc_line in parsed['toc']:
+                    doc.add_paragraph(toc_line, style='List Bullet')
+                doc.add_paragraph()  # Blank line after TOC
+
+            # Process sections with integrated tables
+            color_index = 0
+            for section in parsed['sections']:
+                # Add section heading
+                level = min(section['level'], 3)
+                heading = doc.add_heading(section['title'], level)
+                for run in heading.runs:
+                    run.font.color.rgb = RGBColor(*theme['header_text'])
+
+                # Add section content
+                for content_type, content in section['content']:
+                    if content_type == 'text':
+                        doc.add_paragraph(content)
+                    elif content_type == 'list':
+                        doc.add_paragraph(content, style='List Bullet')
+
+                # Add tables that belong to this section (INLINE, not at the end)
+                for table_data in parsed['tables']:
+                    # Check if this table belongs to the current section
+                    if table_data.get('section') == section['title']:
+                        doc.add_paragraph()  # Space before table
+
+                        # Determine colors
+                        if theme['name'] == 'auto':
+                            color_set = COLOR_SETS[color_index % len(COLOR_SETS)]
+                            header_color = color_set['header']
+                            data_color = color_set['main']
+                            color_index += 1
+                        else:
+                            header_color = theme['header']
+                            data_color = theme['light']
+
+                        # Create table
+                        num_cols = len(table_data['headers'])
+                        num_rows = len(table_data['rows']) + 1  # +1 for header
+                        table = doc.add_table(rows=num_rows, cols=num_cols)
+                        table.style = 'Table Grid'
+                        table.alignment = WD_TABLE_ALIGNMENT.LEFT
+
+                        # Header row
+                        for col_idx, header_text in enumerate(table_data['headers']):
+                            cell = table.rows[0].cells[col_idx]
+                            cell.text = header_text
+                            self._set_cell_shading(cell, header_color)
+                            for para in cell.paragraphs:
+                                for run in para.runs:
+                                    run.font.bold = True
+                                    run.font.size = Pt(11)
+
+                        # Data rows
+                        for row_idx, row_data in enumerate(table_data['rows'], 1):
+                            for col_idx, cell_text in enumerate(row_data):
+                                if col_idx < num_cols:
+                                    cell = table.rows[row_idx].cells[col_idx]
+                                    cell.text = cell_text
+                                    self._set_cell_shading(cell, data_color)
+                                    for para in cell.paragraphs:
+                                        for run in para.runs:
+                                            run.font.size = Pt(10)
+
+                # Add blockquotes that belong to this section (INLINE)
+                for bq in parsed['blockquotes']:
+                    # Check if this blockquote belongs to the current section
+                    if bq.get('section') == section['title']:
+                        doc.add_paragraph()
+
+                        # Check if it's a mnemonic or clinical pearl
+                        content = bq['content']
+                        is_mnemonic = any(word in content.lower() for word in ['mnemonic', 'memory trick', 'remember'])
+
+                        # Create a single-cell table for the box effect
+                        box_table = doc.add_table(rows=1, cols=1)
+                        box_table.style = 'Table Grid'
+                        cell = box_table.rows[0].cells[0]
+
+                        if is_mnemonic:
+                            cell.text = "💡 MEMORY TRICKS & MNEMONICS\n\n" + content
+                            self._set_cell_shading(cell, MNEMONIC_BG)
+                        else:
+                            cell.text = "📋 CLINICAL PEARLS\n\n" + content
+                            self._set_cell_shading(cell, CLINICAL_PEARL_BG)
+
+                        for para in cell.paragraphs:
+                            for run in para.runs:
+                                run.font.size = Pt(10)
+
+            # Save document
+            doc.save(output_path)
+
+            messagebox.showinfo(
+                "Success",
+                f"Word document created successfully!\n\nLocation:\n{output_path}"
+            )
+
+            # Open the file
+            self.open_file(output_path)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to create Word document:\n\n{str(e)}")
+
+    def _set_cell_shading(self, cell, hex_color):
+        """Set cell background color in Word table"""
+        shading_elm = OxmlElement('w:shd')
+        shading_elm.set(qn('w:fill'), hex_color)
+        cell._element.get_or_add_tcPr().append(shading_elm)
+
 
 # ============================================================================
 # MAIN ENTRY POINT
