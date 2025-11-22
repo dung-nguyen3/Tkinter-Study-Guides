@@ -3441,6 +3441,16 @@ Created with Python, tkinter, tksheet, and openpyxl
             line = lines[i]
             stripped = line.strip()
 
+            # Skip horizontal rules (Notion uses --- as section dividers)
+            # These should not appear in the Word output
+            if stripped == '---' or stripped == '***' or stripped == '___':
+                i += 1
+                continue
+            # Also skip lines that are just dashes/asterisks/underscores (various HR formats)
+            if stripped and len(stripped) >= 3 and all(c in '-*_' for c in stripped):
+                i += 1
+                continue
+
             # Handle H1 (Title or major section)
             if stripped.startswith('# ') and not stripped.startswith('## '):
                 h1_title = stripped[2:].strip()
@@ -3469,14 +3479,21 @@ Created with Python, tkinter, tksheet, and openpyxl
 
                 # Check if this is Table of Contents (special handling)
                 if section_title.lower() in ['table of contents', 'toc', 'contents']:
-                    # Collect TOC lines until next ## or ### section
+                    # Collect TOC lines until next heading or horizontal rule
+                    # (Notion markdown uses --- as section dividers)
                     toc_lines = []
                     i += 1
                     while i < len(lines):
                         toc_line = lines[i].strip()
-                        if toc_line.startswith('## ') or toc_line.startswith('### '):
+                        # Stop at any heading (H1, H2, H3)
+                        if toc_line.startswith('# '):
                             break
-                        if toc_line:
+                        # Stop at horizontal rules (Notion section dividers)
+                        if toc_line == '---' or toc_line == '***' or toc_line == '___':
+                            i += 1  # Skip the horizontal rule
+                            break
+                        # Only add non-empty, non-rule lines
+                        if toc_line and not all(c in '-*_' for c in toc_line):
                             toc_lines.append(toc_line)
                         i += 1
                     parsed['toc'] = toc_lines
