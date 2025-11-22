@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Excel Master Chart Creator v2.6 - Desktop Application
+Study Guide Creator v3.0 - Desktop Application
 A tksheet-based GUI application for creating formatted Excel master charts
-with auto-color assignment, professional formatting, and multi-format export.
+AND converting Markdown study guides to styled Word documents.
 
-Version 2.6 Features:
+Version 3.0 Features:
 - Excel-like grid interface with tksheet
 - Right-click context menu
 - Auto-save and crash recovery
 - Live color preview
 - 3-shade color system
-- Two export formats: Master Chart (single sheet) and Comprehensive (4-tab)
+- Two Excel export formats: Master Chart (single sheet) and Comprehensive (4-tab)
 - Data validation dropdowns for common medical fields (Route, Contraindications, etc.)
+- NEW: Markdown to Word conversion with styled tables and clinical pearls
+- NEW: Word tab for importing .md files and exporting to .docx
 """
 
 import tkinter as tk
@@ -30,6 +32,20 @@ from tksheet import Sheet
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+
+# python-docx for Word document generation
+try:
+    from docx import Document
+    from docx.shared import Pt, RGBColor, Inches, Twips
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+    print("Warning: python-docx not installed. Word export will be disabled.")
+    print("Install with: pip install python-docx")
 
 # ============================================================================
 # COLOR CONSTANTS - 3-Shade System for Professional Gradients
@@ -64,6 +80,40 @@ MNEMONIC_BG = 'E6F3FF'        # Light blue for mnemonics
 CLINICAL_PEARL_BG = 'E8F5E9'   # Light green for clinical pearls
 ANALOGY_BOX_BG = 'FFF9E6'      # Light yellow for analogies
 MAIN_TITLE_COLOR = '4472C4'    # Dark blue for sheet titles
+
+# Word document color themes (from LO Word template)
+WORD_COLOR_THEMES = {
+    'Purple - General Topics': {
+        'header': 'D1C4E9',
+        'header_text': (74, 20, 140),
+        'light': 'EDE7F6',
+        'name': 'purple'
+    },
+    'Blue - Diagnostic': {
+        'header': 'B3E5FC',
+        'header_text': (1, 87, 155),
+        'light': 'E1F5FE',
+        'name': 'blue'
+    },
+    'Green - Normal Findings': {
+        'header': 'C8E6C9',
+        'header_text': (27, 94, 32),
+        'light': 'E8F5E9',
+        'name': 'green'
+    },
+    'Red - Pathology': {
+        'header': 'FFCDD2',
+        'header_text': (183, 28, 28),
+        'light': 'FFEBEE',
+        'name': 'red'
+    },
+    'Auto (Rotate Colors)': {
+        'header': None,  # Will use COLOR_SETS rotation
+        'header_text': (0, 0, 0),
+        'light': None,
+        'name': 'auto'
+    }
+}
 
 # Header formatting constants (backward compatible)
 HEADER_BG_COLOR = "#4472C4"
@@ -245,7 +295,7 @@ def hex_to_rgb(hex_color):
 class ExcelMasterChartApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Excel Master Chart Creator v2.6")
+        self.root.title("Study Guide Creator v3.0")
         self.root.geometry("1400x800")
         self.root.minsize(800, 600)  # Set minimum window size (reduced for better flexibility)
 
@@ -326,6 +376,15 @@ class ExcelMasterChartApp:
 
         file_menu.add_separator()
         file_menu.add_command(label="Export to Excel...", command=self.export_to_excel)
+        file_menu.add_separator()
+
+        # Word/Markdown submenu
+        word_menu = tk.Menu(file_menu, tearoff=0)
+        file_menu.add_cascade(label="Markdown/Word", menu=word_menu)
+        word_menu.add_command(label="Import Markdown File...", command=self.browse_markdown_file)
+        word_menu.add_command(label="Preview Markdown...", command=self.preview_markdown)
+        word_menu.add_command(label="Convert to Word...", command=self.convert_markdown_to_word)
+
         file_menu.add_separator()
         file_menu.add_command(label="Quit", command=self.on_closing, accelerator="Cmd+Q")
 
@@ -534,6 +593,44 @@ class ExcelMasterChartApp:
 
         export_btn = ttk.Menubutton(export_tab, text="Export ▼", menu=export_menu)
         export_btn.pack(side=tk.LEFT, padx=2, pady=2)
+
+        # === WORD TAB (Markdown to Word conversion) ===
+        word_tab = ttk.Frame(self.ribbon_notebook, padding="5")
+        self.ribbon_notebook.add(word_tab, text="Word")
+
+        # Markdown file selection
+        md_frame = ttk.Frame(word_tab)
+        md_frame.pack(side=tk.LEFT, padx=2, pady=2)
+
+        ttk.Label(md_frame, text="Markdown:").pack(side=tk.LEFT, padx=2)
+        self.markdown_path_var = tk.StringVar(value="No file selected")
+        self.md_path_label = ttk.Label(md_frame, textvariable=self.markdown_path_var, width=30)
+        self.md_path_label.pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(md_frame, text="Browse...", command=self.browse_markdown_file).pack(side=tk.LEFT, padx=2)
+
+        # Color theme dropdown
+        theme_frame = ttk.Frame(word_tab)
+        theme_frame.pack(side=tk.LEFT, padx=10, pady=2)
+
+        ttk.Label(theme_frame, text="Theme:").pack(side=tk.LEFT, padx=2)
+        self.word_theme_var = tk.StringVar(value="Purple - General Topics")
+        theme_combo = ttk.Combobox(
+            theme_frame,
+            textvariable=self.word_theme_var,
+            values=list(WORD_COLOR_THEMES.keys()),
+            state="readonly",
+            width=20
+        )
+        theme_combo.pack(side=tk.LEFT, padx=2)
+
+        # Action buttons
+        ttk.Button(word_tab, text="Preview", command=self.preview_markdown).pack(side=tk.LEFT, padx=5, pady=2)
+        ttk.Button(word_tab, text="Convert to Word", command=self.convert_markdown_to_word).pack(side=tk.LEFT, padx=5, pady=2)
+
+        # Store markdown content
+        self.markdown_content = ""
+        self.markdown_file_path = None
 
     def toggle_ribbon(self):
         """Toggle ribbon visibility"""
@@ -2751,6 +2848,369 @@ Created with Python, tkinter, tksheet, and openpyxl
             self.autosave_path.unlink()
 
         self.root.destroy()
+
+    # ========================================================================
+    # WORD TAB - MARKDOWN TO WORD CONVERSION
+    # ========================================================================
+
+    def browse_markdown_file(self):
+        """Open file dialog to select a markdown file"""
+        file_path = filedialog.askopenfilename(
+            title="Select Markdown File",
+            filetypes=[
+                ("Markdown files", "*.md"),
+                ("Text files", "*.txt"),
+                ("All files", "*.*")
+            ]
+        )
+
+        if file_path:
+            self.markdown_file_path = Path(file_path)
+            # Show truncated path in label
+            display_name = self.markdown_file_path.name
+            if len(display_name) > 28:
+                display_name = display_name[:25] + "..."
+            self.markdown_path_var.set(display_name)
+
+            # Read the file
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    self.markdown_content = f.read()
+                self.status_label.config(text=f"● Loaded: {self.markdown_file_path.name}", foreground="green")
+            except Exception as e:
+                messagebox.showerror("Error", f"Could not read file:\n{str(e)}")
+                self.markdown_content = ""
+
+    def preview_markdown(self):
+        """Show a preview of the parsed markdown content"""
+        if not self.markdown_content:
+            messagebox.showwarning("No File", "Please select a markdown file first.")
+            return
+
+        # Create preview window
+        preview_win = tk.Toplevel(self.root)
+        preview_win.title("Markdown Preview")
+        preview_win.geometry("800x600")
+        preview_win.transient(self.root)
+
+        # Create text widget with scrollbar
+        frame = ttk.Frame(preview_win)
+        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        text = tk.Text(frame, wrap=tk.WORD, font=("Courier", 11))
+        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=text.yview)
+        text.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Parse and display structured content
+        parsed = self.parse_markdown(self.markdown_content)
+        preview_text = self.format_parsed_preview(parsed)
+        text.insert("1.0", preview_text)
+        text.config(state=tk.DISABLED)
+
+        # Close button
+        ttk.Button(preview_win, text="Close", command=preview_win.destroy).pack(pady=10)
+
+    def parse_markdown(self, content):
+        """Parse markdown content into structured data"""
+        lines = content.split('\n')
+        parsed = {
+            'title': '',
+            'sections': [],
+            'tables': [],
+            'blockquotes': [],
+            'lists': []
+        }
+
+        current_section = None
+        current_table = None
+        current_blockquote = []
+        in_table = False
+        table_index = 0
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+
+            # Skip empty lines (but end blockquotes)
+            if not stripped:
+                if current_blockquote:
+                    parsed['blockquotes'].append({
+                        'content': '\n'.join(current_blockquote),
+                        'section': current_section
+                    })
+                    current_blockquote = []
+                in_table = False
+                continue
+
+            # Headers
+            if stripped.startswith('# ') and not stripped.startswith('## '):
+                parsed['title'] = stripped[2:].strip()
+                current_section = parsed['title']
+            elif stripped.startswith('## '):
+                section_title = stripped[3:].strip()
+                parsed['sections'].append({
+                    'level': 2,
+                    'title': section_title,
+                    'content': []
+                })
+                current_section = section_title
+            elif stripped.startswith('### '):
+                section_title = stripped[4:].strip()
+                parsed['sections'].append({
+                    'level': 3,
+                    'title': section_title,
+                    'content': []
+                })
+                current_section = section_title
+
+            # Tables (lines starting with |)
+            elif stripped.startswith('|'):
+                if not in_table:
+                    in_table = True
+                    current_table = {
+                        'headers': [],
+                        'rows': [],
+                        'section': current_section
+                    }
+                    # Parse header row
+                    cells = [c.strip() for c in stripped.split('|')[1:-1]]
+                    current_table['headers'] = cells
+                elif stripped.replace('-', '').replace('|', '').replace(' ', '') == '':
+                    # Separator row, skip
+                    pass
+                else:
+                    # Data row
+                    cells = [c.strip() for c in stripped.split('|')[1:-1]]
+                    current_table['rows'].append(cells)
+
+                # Check if next line is not a table line
+                if i + 1 < len(lines):
+                    next_line = lines[i + 1].strip()
+                    if not next_line.startswith('|') and next_line:
+                        if current_table and current_table['headers']:
+                            parsed['tables'].append(current_table)
+                        current_table = None
+                        in_table = False
+                elif current_table and current_table['headers']:
+                    parsed['tables'].append(current_table)
+
+            # Blockquotes
+            elif stripped.startswith('>'):
+                quote_content = stripped[1:].strip()
+                current_blockquote.append(quote_content)
+
+            # List items
+            elif stripped.startswith('- ') or stripped.startswith('* '):
+                list_item = stripped[2:].strip()
+                if parsed['sections']:
+                    parsed['sections'][-1]['content'].append(('list', list_item))
+
+            # Regular text
+            else:
+                if parsed['sections']:
+                    parsed['sections'][-1]['content'].append(('text', stripped))
+
+        # Handle any remaining blockquote
+        if current_blockquote:
+            parsed['blockquotes'].append({
+                'content': '\n'.join(current_blockquote),
+                'section': current_section
+            })
+
+        return parsed
+
+    def format_parsed_preview(self, parsed):
+        """Format parsed markdown for preview display"""
+        lines = []
+        lines.append("=" * 60)
+        lines.append(f"TITLE: {parsed['title']}")
+        lines.append("=" * 60)
+        lines.append("")
+
+        lines.append(f"SECTIONS FOUND: {len(parsed['sections'])}")
+        for sec in parsed['sections']:
+            prefix = "  " if sec['level'] == 2 else "    "
+            lines.append(f"{prefix}[H{sec['level']}] {sec['title']}")
+
+        lines.append("")
+        lines.append(f"TABLES FOUND: {len(parsed['tables'])}")
+        for i, table in enumerate(parsed['tables']):
+            lines.append(f"  Table {i+1}: {len(table['headers'])} columns, {len(table['rows'])} rows")
+            lines.append(f"    Headers: {', '.join(table['headers'][:3])}...")
+
+        lines.append("")
+        lines.append(f"BLOCKQUOTES (Clinical Pearls): {len(parsed['blockquotes'])}")
+        for i, bq in enumerate(parsed['blockquotes']):
+            preview = bq['content'][:50] + "..." if len(bq['content']) > 50 else bq['content']
+            lines.append(f"  [{i+1}] {preview}")
+
+        lines.append("")
+        lines.append("=" * 60)
+        lines.append("RAW CONTENT PREVIEW:")
+        lines.append("=" * 60)
+        lines.append(self.markdown_content[:2000])
+        if len(self.markdown_content) > 2000:
+            lines.append("\n... [truncated]")
+
+        return '\n'.join(lines)
+
+    def convert_markdown_to_word(self):
+        """Convert loaded markdown to a styled Word document"""
+        if not DOCX_AVAILABLE:
+            messagebox.showerror(
+                "Missing Dependency",
+                "python-docx is not installed.\n\nInstall it with:\npip install python-docx"
+            )
+            return
+
+        if not self.markdown_content:
+            messagebox.showwarning("No File", "Please select a markdown file first.")
+            return
+
+        # Parse the markdown
+        parsed = self.parse_markdown(self.markdown_content)
+
+        # Get output file path
+        default_name = "Study_Guide.docx"
+        if self.markdown_file_path:
+            default_name = self.markdown_file_path.stem + ".docx"
+
+        output_path = filedialog.asksaveasfilename(
+            title="Save Word Document",
+            defaultextension=".docx",
+            filetypes=[("Word Document", "*.docx"), ("All files", "*.*")],
+            initialfile=default_name
+        )
+
+        if not output_path:
+            return
+
+        try:
+            # Create Word document
+            doc = Document()
+
+            # Set margins
+            for section in doc.sections:
+                section.top_margin = Inches(0.8)
+                section.bottom_margin = Inches(0.8)
+                section.left_margin = Inches(0.8)
+                section.right_margin = Inches(0.8)
+
+            # Get selected theme
+            theme_name = self.word_theme_var.get()
+            theme = WORD_COLOR_THEMES.get(theme_name, WORD_COLOR_THEMES['Purple - General Topics'])
+
+            # Add title
+            if parsed['title']:
+                title = doc.add_heading(parsed['title'], 0)
+                title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for run in title.runs:
+                    run.font.color.rgb = RGBColor(*theme['header_text'])
+
+            # Process sections
+            color_index = 0
+            for section in parsed['sections']:
+                # Add section heading
+                level = min(section['level'], 3)
+                heading = doc.add_heading(section['title'], level)
+                for run in heading.runs:
+                    run.font.color.rgb = RGBColor(*theme['header_text'])
+
+                # Add section content
+                for content_type, content in section['content']:
+                    if content_type == 'text':
+                        doc.add_paragraph(content)
+                    elif content_type == 'list':
+                        doc.add_paragraph(content, style='List Bullet')
+
+            # Add tables
+            for table_data in parsed['tables']:
+                doc.add_paragraph()  # Space before table
+
+                # Determine colors
+                if theme['name'] == 'auto':
+                    color_set = COLOR_SETS[color_index % len(COLOR_SETS)]
+                    header_color = color_set['header']
+                    data_color = color_set['main']
+                    color_index += 1
+                else:
+                    header_color = theme['header']
+                    data_color = theme['light']
+
+                # Create table
+                num_cols = len(table_data['headers'])
+                num_rows = len(table_data['rows']) + 1  # +1 for header
+                table = doc.add_table(rows=num_rows, cols=num_cols)
+                table.style = 'Table Grid'
+                table.alignment = WD_TABLE_ALIGNMENT.LEFT
+
+                # Header row
+                for col_idx, header_text in enumerate(table_data['headers']):
+                    cell = table.rows[0].cells[col_idx]
+                    cell.text = header_text
+                    self._set_cell_shading(cell, header_color)
+                    for para in cell.paragraphs:
+                        for run in para.runs:
+                            run.font.bold = True
+                            run.font.size = Pt(11)
+
+                # Data rows
+                for row_idx, row_data in enumerate(table_data['rows'], 1):
+                    for col_idx, cell_text in enumerate(row_data):
+                        if col_idx < num_cols:
+                            cell = table.rows[row_idx].cells[col_idx]
+                            cell.text = cell_text
+                            self._set_cell_shading(cell, data_color)
+                            for para in cell.paragraphs:
+                                for run in para.runs:
+                                    run.font.size = Pt(10)
+
+            # Add blockquotes as Clinical Pearls boxes
+            for bq in parsed['blockquotes']:
+                doc.add_paragraph()
+
+                # Check if it's a mnemonic or clinical pearl
+                content = bq['content']
+                is_mnemonic = any(word in content.lower() for word in ['mnemonic', 'memory trick', 'remember'])
+
+                # Create a single-cell table for the box effect
+                box_table = doc.add_table(rows=1, cols=1)
+                box_table.style = 'Table Grid'
+                cell = box_table.rows[0].cells[0]
+
+                if is_mnemonic:
+                    cell.text = "💡 MEMORY TRICKS & MNEMONICS\n\n" + content
+                    self._set_cell_shading(cell, MNEMONIC_BG)
+                else:
+                    cell.text = "📋 CLINICAL PEARLS\n\n" + content
+                    self._set_cell_shading(cell, CLINICAL_PEARL_BG)
+
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(10)
+
+            # Save document
+            doc.save(output_path)
+
+            messagebox.showinfo(
+                "Success",
+                f"Word document created successfully!\n\nLocation:\n{output_path}"
+            )
+
+            # Open the file
+            self.open_file(output_path)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to create Word document:\n\n{str(e)}")
+
+    def _set_cell_shading(self, cell, hex_color):
+        """Set cell background color in Word table"""
+        shading_elm = OxmlElement('w:shd')
+        shading_elm.set(qn('w:fill'), hex_color)
+        cell._element.get_or_add_tcPr().append(shading_elm)
+
 
 # ============================================================================
 # MAIN ENTRY POINT
