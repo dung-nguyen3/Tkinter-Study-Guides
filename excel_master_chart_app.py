@@ -623,6 +623,7 @@ class ExcelMasterChartApp:
             width=20
         )
         theme_combo.pack(side=tk.LEFT, padx=2)
+        theme_combo.bind("<<ComboboxSelected>>", lambda e: self.update_word_preview())
 
         # Action buttons
         ttk.Button(word_tab, text="Preview", command=self.preview_markdown).pack(side=tk.LEFT, padx=5, pady=2)
@@ -656,7 +657,7 @@ class ExcelMasterChartApp:
         grid_frame.columnconfigure(0, weight=1)
         grid_frame.rowconfigure(0, weight=1)
 
-        # Sheet container (takes all available space)
+        # Sheet container for Excel grid (takes all available space)
         sheet_container = ttk.Frame(grid_frame)
         sheet_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         sheet_container.columnconfigure(0, weight=1)
@@ -664,6 +665,402 @@ class ExcelMasterChartApp:
 
         # This will be replaced when preset is loaded
         self.sheet_container = sheet_container
+
+        # Word preview container (hidden by default)
+        self.word_preview_container = ttk.Frame(grid_frame)
+        self.word_preview_container.columnconfigure(0, weight=1)
+        self.word_preview_container.rowconfigure(0, weight=1)
+        self.create_word_preview_panel()
+
+        # Bind tab change event
+        self.ribbon_notebook.bind("<<NotebookTabChanged>>", self.on_ribbon_tab_changed)
+
+    def create_word_preview_panel(self):
+        """Create the Word document preview panel with styled text"""
+        # Preview frame with scrollbar
+        preview_frame = ttk.Frame(self.word_preview_container)
+        preview_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        preview_frame.columnconfigure(0, weight=1)
+        preview_frame.rowconfigure(0, weight=1)
+
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(preview_frame)
+        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+
+        # Text widget for preview
+        self.word_preview_text = tk.Text(
+            preview_frame,
+            wrap=tk.WORD,
+            font=('Calibri', 11),
+            padx=20,
+            pady=15,
+            yscrollcommand=scrollbar.set,
+            bg='white',
+            relief=tk.FLAT,
+            highlightthickness=1,
+            highlightbackground='#cccccc'
+        )
+        self.word_preview_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        scrollbar.config(command=self.word_preview_text.yview)
+
+        # Configure text tags for styled preview
+        self.configure_word_preview_tags()
+
+        # Initial placeholder
+        self.word_preview_text.insert("1.0", "\n\n    Select a Markdown file to preview...\n\n    Click 'Browse...' in the ribbon above to load a .md file.")
+        self.word_preview_text.config(state=tk.DISABLED)
+
+    def configure_word_preview_tags(self):
+        """Configure text tags for Word preview styling"""
+        # Title style (H1)
+        self.word_preview_text.tag_configure(
+            'title',
+            font=('Calibri', 24, 'bold'),
+            foreground='#764BA2',
+            spacing3=15,
+            justify='center'
+        )
+
+        # H2 Section headers
+        self.word_preview_text.tag_configure(
+            'h2',
+            font=('Calibri', 16, 'bold'),
+            foreground='#333333',
+            spacing1=20,
+            spacing3=8
+        )
+
+        # H3 Section headers
+        self.word_preview_text.tag_configure(
+            'h3',
+            font=('Calibri', 13, 'bold'),
+            foreground='#555555',
+            spacing1=15,
+            spacing3=6
+        )
+
+        # Table header style
+        self.word_preview_text.tag_configure(
+            'table_header',
+            font=('Calibri', 11, 'bold'),
+            background='#D1C4E9',
+            foreground='#4A148C'
+        )
+
+        # Table cell style
+        self.word_preview_text.tag_configure(
+            'table_cell',
+            font=('Calibri', 10),
+            background='#F5F5F5'
+        )
+
+        # Table border simulation
+        self.word_preview_text.tag_configure(
+            'table_row',
+            font=('Calibri', 10),
+            lmargin1=20,
+            lmargin2=20
+        )
+
+        # Clinical pearls (green box)
+        self.word_preview_text.tag_configure(
+            'clinical_pearl',
+            font=('Calibri', 10),
+            background='#E8F5E9',
+            foreground='#1B5E20',
+            lmargin1=30,
+            lmargin2=30,
+            rmargin=30,
+            spacing1=5,
+            spacing3=5
+        )
+
+        # Clinical pearl header
+        self.word_preview_text.tag_configure(
+            'clinical_pearl_header',
+            font=('Calibri', 11, 'bold'),
+            background='#C8E6C9',
+            foreground='#1B5E20',
+            lmargin1=30,
+            lmargin2=30,
+            rmargin=30
+        )
+
+        # Mnemonics (blue box)
+        self.word_preview_text.tag_configure(
+            'mnemonic',
+            font=('Calibri', 10, 'italic'),
+            background='#E3F2FD',
+            foreground='#0D47A1',
+            lmargin1=30,
+            lmargin2=30,
+            rmargin=30,
+            spacing1=5,
+            spacing3=5
+        )
+
+        # Mnemonic header
+        self.word_preview_text.tag_configure(
+            'mnemonic_header',
+            font=('Calibri', 11, 'bold'),
+            background='#BBDEFB',
+            foreground='#0D47A1',
+            lmargin1=30,
+            lmargin2=30,
+            rmargin=30
+        )
+
+        # List items
+        self.word_preview_text.tag_configure(
+            'list_item',
+            font=('Calibri', 11),
+            lmargin1=40,
+            lmargin2=55
+        )
+
+        # Regular text
+        self.word_preview_text.tag_configure(
+            'body',
+            font=('Calibri', 11),
+            spacing1=3,
+            spacing3=3
+        )
+
+        # Horizontal rule
+        self.word_preview_text.tag_configure(
+            'hr',
+            font=('Calibri', 6),
+            foreground='#BBBBBB',
+            justify='center'
+        )
+
+    def on_ribbon_tab_changed(self, event):
+        """Handle ribbon tab change to show appropriate content panel"""
+        selected_tab = self.ribbon_notebook.tab(self.ribbon_notebook.select(), "text")
+
+        if selected_tab == "Word":
+            # Hide Excel grid, show Word preview
+            self.sheet_container.grid_remove()
+            self.word_preview_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        else:
+            # Show Excel grid, hide Word preview
+            self.word_preview_container.grid_remove()
+            self.sheet_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+    def update_word_preview(self):
+        """Update the Word preview panel with styled content from parsed markdown"""
+        if not self.markdown_content:
+            return
+
+        # Parse the markdown
+        parsed = self.parse_markdown(self.markdown_content)
+
+        # Enable text widget for editing
+        self.word_preview_text.config(state=tk.NORMAL)
+        self.word_preview_text.delete("1.0", tk.END)
+
+        # Get selected theme for colors
+        theme_name = self.word_theme_var.get()
+        theme = WORD_COLOR_THEMES.get(theme_name, WORD_COLOR_THEMES['Purple - General Topics'])
+
+        # Update table header tag colors based on theme
+        if theme['header']:
+            header_rgb = tuple(int(theme['header'][i:i+2], 16) for i in (0, 2, 4))
+            header_bg = f'#{theme["header"]}'
+            header_fg = '#{:02x}{:02x}{:02x}'.format(*theme['header_text'])
+            self.word_preview_text.tag_configure('table_header', background=header_bg, foreground=header_fg)
+
+        # Add title
+        if parsed['title']:
+            self.word_preview_text.insert(tk.END, parsed['title'] + "\n\n", 'title')
+
+        # Track which sections have been processed
+        section_idx = 0
+        table_idx = 0
+        blockquote_idx = 0
+
+        # Process content in order based on original markdown structure
+        lines = self.markdown_content.split('\n')
+        current_section = None
+        in_table = False
+        in_blockquote = False
+        current_blockquote_lines = []
+
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+
+            # Empty line
+            if not stripped:
+                # Check if we're in a blockquote that might continue
+                if in_blockquote:
+                    # Look ahead to see if blockquote continues
+                    continues = False
+                    for j in range(i + 1, len(lines)):
+                        next_stripped = lines[j].strip()
+                        if next_stripped:
+                            continues = next_stripped.startswith('>')
+                            break
+                    if continues:
+                        current_blockquote_lines.append('')
+                    else:
+                        # End blockquote, render it
+                        self._render_blockquote_to_preview(current_blockquote_lines)
+                        current_blockquote_lines = []
+                        in_blockquote = False
+                        self.word_preview_text.insert(tk.END, "\n")
+                else:
+                    in_table = False
+                i += 1
+                continue
+
+            # H1 Title (skip if already shown)
+            if stripped.startswith('# ') and not stripped.startswith('## '):
+                i += 1
+                continue
+
+            # H2 Section
+            elif stripped.startswith('## '):
+                self.word_preview_text.insert(tk.END, stripped[3:].strip() + "\n", 'h2')
+                current_section = stripped[3:].strip()
+
+            # H3 Section
+            elif stripped.startswith('### '):
+                self.word_preview_text.insert(tk.END, stripped[4:].strip() + "\n", 'h3')
+
+            # Horizontal rule
+            elif stripped == '---' or stripped == '***' or stripped == '___':
+                self.word_preview_text.insert(tk.END, "─" * 60 + "\n", 'hr')
+
+            # Table
+            elif stripped.startswith('|'):
+                if not in_table:
+                    in_table = True
+                    # Collect all table lines
+                    table_lines = []
+                    j = i
+                    while j < len(lines) and lines[j].strip().startswith('|'):
+                        table_lines.append(lines[j].strip())
+                        j += 1
+                    # Render table
+                    self._render_table_to_preview(table_lines, theme)
+                    i = j - 1  # -1 because we'll increment at end
+
+            # Blockquote
+            elif stripped.startswith('>'):
+                in_blockquote = True
+                quote_content = stripped[1:].strip()
+                current_blockquote_lines.append(quote_content)
+
+            # List item
+            elif stripped.startswith('- ') or stripped.startswith('* '):
+                self.word_preview_text.insert(tk.END, "  • " + stripped[2:].strip() + "\n", 'list_item')
+
+            # Numbered list
+            elif len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in '.):':
+                self.word_preview_text.insert(tk.END, "  " + stripped + "\n", 'list_item')
+
+            # Regular text
+            else:
+                # Check for bold text markers
+                text = stripped
+                if text.startswith('**') and '**' in text[2:]:
+                    # Has bold text
+                    self.word_preview_text.insert(tk.END, text + "\n", 'body')
+                else:
+                    self.word_preview_text.insert(tk.END, text + "\n", 'body')
+
+            i += 1
+
+        # Handle any remaining blockquote
+        if current_blockquote_lines:
+            self._render_blockquote_to_preview(current_blockquote_lines)
+
+        # Disable text widget
+        self.word_preview_text.config(state=tk.DISABLED)
+
+    def _render_table_to_preview(self, table_lines, theme):
+        """Render a markdown table to the preview panel"""
+        if not table_lines:
+            return
+
+        # Parse header row
+        headers = [c.strip() for c in table_lines[0].split('|')[1:-1]]
+        if not headers:
+            return
+
+        # Build header line
+        header_text = "  │ " + " │ ".join(f"{h:<15}"[:15] for h in headers) + " │\n"
+        self.word_preview_text.insert(tk.END, header_text, 'table_header')
+
+        # Separator
+        sep_text = "  ├" + "─" * (len(headers) * 18 - 1) + "┤\n"
+        self.word_preview_text.insert(tk.END, sep_text, 'table_row')
+
+        # Data rows (skip separator row)
+        for line in table_lines[1:]:
+            # Skip separator rows
+            if line.replace('-', '').replace('|', '').replace(' ', '').replace(':', '') == '':
+                continue
+            cells = [c.strip() for c in line.split('|')[1:-1]]
+            # Pad cells if needed
+            while len(cells) < len(headers):
+                cells.append('')
+            row_text = "  │ " + " │ ".join(f"{c:<15}"[:15] for c in cells[:len(headers)]) + " │\n"
+            self.word_preview_text.insert(tk.END, row_text, 'table_cell')
+
+        # Bottom border
+        bottom_text = "  └" + "─" * (len(headers) * 18 - 1) + "┘\n\n"
+        self.word_preview_text.insert(tk.END, bottom_text, 'table_row')
+
+    def _render_blockquote_to_preview(self, lines):
+        """Render a blockquote (clinical pearl or mnemonic) to the preview panel"""
+        if not lines:
+            return
+
+        # Join lines and determine type
+        content = '\n'.join(lines)
+
+        # Detect type based on content
+        is_clinical_pearl = 'clinical pearl' in content.lower() or 'high-yield' in content.lower()
+        is_mnemonic = 'mnemonic' in content.lower() or 'memory trick' in content.lower()
+
+        if is_clinical_pearl:
+            header_tag = 'clinical_pearl_header'
+            content_tag = 'clinical_pearl'
+            box_char = '│'
+        elif is_mnemonic:
+            header_tag = 'mnemonic_header'
+            content_tag = 'mnemonic'
+            box_char = '│'
+        else:
+            # Default to clinical pearl style for blockquotes
+            header_tag = 'clinical_pearl_header'
+            content_tag = 'clinical_pearl'
+            box_char = '│'
+
+        # Render with box styling
+        self.word_preview_text.insert(tk.END, "  ┌" + "─" * 50 + "┐\n", content_tag)
+
+        for i, line in enumerate(lines):
+            if line:  # Non-empty line
+                # First line might be the header
+                if i == 0 and ('**' in line or 'Clinical' in line or 'Memory' in line or 'Mnemonic' in line):
+                    # Remove ** markers for display
+                    display_line = line.replace('**', '')
+                    self.word_preview_text.insert(tk.END, f"  {box_char} {display_line}\n", header_tag)
+                else:
+                    # Regular content line - handle bullet points
+                    display_line = line
+                    if display_line.startswith('•') or display_line.startswith('-'):
+                        display_line = "  • " + display_line.lstrip('•- ')
+                    self.word_preview_text.insert(tk.END, f"  {box_char} {display_line}\n", content_tag)
+            else:
+                # Empty line in blockquote
+                self.word_preview_text.insert(tk.END, f"  {box_char}\n", content_tag)
+
+        self.word_preview_text.insert(tk.END, "  └" + "─" * 50 + "┘\n\n", content_tag)
 
     def create_status_bar_bottom(self):
         """Create status bar at bottom of window"""
@@ -2877,6 +3274,8 @@ Created with Python, tkinter, tksheet, and openpyxl
                 with open(file_path, 'r', encoding='utf-8') as f:
                     self.markdown_content = f.read()
                 self.status_label.config(text=f"● Loaded: {self.markdown_file_path.name}", foreground="green")
+                # Update the Word preview panel
+                self.update_word_preview()
             except Exception as e:
                 messagebox.showerror("Error", f"Could not read file:\n{str(e)}")
                 self.markdown_content = ""
@@ -2914,7 +3313,7 @@ Created with Python, tkinter, tksheet, and openpyxl
         ttk.Button(preview_win, text="Close", command=preview_win.destroy).pack(pady=10)
 
     def parse_markdown(self, content):
-        """Parse markdown content into structured data"""
+        """Parse markdown content into structured data with look-ahead for blockquotes"""
         lines = content.split('\n')
         parsed = {
             'title': '',
@@ -2928,27 +3327,62 @@ Created with Python, tkinter, tksheet, and openpyxl
         current_table = None
         current_blockquote = []
         in_table = False
+        in_blockquote = False
         table_index = 0
 
-        for i, line in enumerate(lines):
+        def look_ahead_for_blockquote(start_idx):
+            """Check if any upcoming non-empty line starts with >"""
+            for j in range(start_idx, len(lines)):
+                next_stripped = lines[j].strip()
+                if next_stripped:  # Found a non-empty line
+                    return next_stripped.startswith('>')
+            return False  # No more non-empty lines
+
+        i = 0
+        while i < len(lines):
+            line = lines[i]
             stripped = line.strip()
 
-            # Skip empty lines (but end blockquotes)
+            # Handle empty lines with look-ahead for blockquotes
             if not stripped:
+                if in_blockquote:
+                    # Look ahead to see if blockquote continues
+                    if look_ahead_for_blockquote(i + 1):
+                        # Continue blockquote - add empty line marker
+                        current_blockquote.append('')
+                    else:
+                        # End the blockquote
+                        parsed['blockquotes'].append({
+                            'content': '\n'.join(current_blockquote),
+                            'section': current_section
+                        })
+                        current_blockquote = []
+                        in_blockquote = False
+                in_table = False
+                i += 1
+                continue
+
+            # Headers
+            if stripped.startswith('# ') and not stripped.startswith('## '):
+                # End any active blockquote before new section
                 if current_blockquote:
                     parsed['blockquotes'].append({
                         'content': '\n'.join(current_blockquote),
                         'section': current_section
                     })
                     current_blockquote = []
-                in_table = False
-                continue
-
-            # Headers
-            if stripped.startswith('# ') and not stripped.startswith('## '):
+                    in_blockquote = False
                 parsed['title'] = stripped[2:].strip()
                 current_section = parsed['title']
             elif stripped.startswith('## '):
+                # End any active blockquote before new section
+                if current_blockquote:
+                    parsed['blockquotes'].append({
+                        'content': '\n'.join(current_blockquote),
+                        'section': current_section
+                    })
+                    current_blockquote = []
+                    in_blockquote = False
                 section_title = stripped[3:].strip()
                 parsed['sections'].append({
                     'level': 2,
@@ -2957,6 +3391,14 @@ Created with Python, tkinter, tksheet, and openpyxl
                 })
                 current_section = section_title
             elif stripped.startswith('### '):
+                # End any active blockquote before new section
+                if current_blockquote:
+                    parsed['blockquotes'].append({
+                        'content': '\n'.join(current_blockquote),
+                        'section': current_section
+                    })
+                    current_blockquote = []
+                    in_blockquote = False
                 section_title = stripped[4:].strip()
                 parsed['sections'].append({
                     'level': 3,
@@ -2977,12 +3419,19 @@ Created with Python, tkinter, tksheet, and openpyxl
                     # Parse header row
                     cells = [c.strip() for c in stripped.split('|')[1:-1]]
                     current_table['headers'] = cells
-                elif stripped.replace('-', '').replace('|', '').replace(' ', '') == '':
-                    # Separator row, skip
+                elif stripped.replace('-', '').replace('|', '').replace(' ', '').replace(':', '') == '':
+                    # Separator row (may contain : for alignment), skip
                     pass
                 else:
-                    # Data row
+                    # Data row - pad or trim to match header count
                     cells = [c.strip() for c in stripped.split('|')[1:-1]]
+                    if current_table and current_table['headers']:
+                        header_count = len(current_table['headers'])
+                        # Pad with empty strings if needed
+                        while len(cells) < header_count:
+                            cells.append('')
+                        # Trim if too many
+                        cells = cells[:header_count]
                     current_table['rows'].append(cells)
 
                 # Check if next line is not a table line
@@ -2996,10 +3445,11 @@ Created with Python, tkinter, tksheet, and openpyxl
                 elif current_table and current_table['headers']:
                     parsed['tables'].append(current_table)
 
-            # Blockquotes
+            # Blockquotes (lines starting with >)
             elif stripped.startswith('>'):
                 quote_content = stripped[1:].strip()
                 current_blockquote.append(quote_content)
+                in_blockquote = True
 
             # List items
             elif stripped.startswith('- ') or stripped.startswith('* '):
@@ -3011,6 +3461,8 @@ Created with Python, tkinter, tksheet, and openpyxl
             else:
                 if parsed['sections']:
                     parsed['sections'][-1]['content'].append(('text', stripped))
+
+            i += 1
 
         # Handle any remaining blockquote
         if current_blockquote:
