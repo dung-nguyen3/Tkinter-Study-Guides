@@ -768,31 +768,36 @@ class ExcelMasterChartApp:
         if selected_tab_index < len(tab_names):
             selected_tab = tab_names[selected_tab_index]
 
-            # Handle Word tab - show word preview, hide sheet
+            # Handle Word tab - show word preview, hide grid_frame (Excel area)
             if selected_tab == "Word":
-                if self.sheet_container and self.sheet_container.winfo_exists():
-                    self.sheet_container.grid_forget()
-                # Show Word preview container
+                # Hide the entire grid frame (contains the spreadsheet)
+                if hasattr(self, 'grid_frame') and self.grid_frame.winfo_exists():
+                    self.grid_frame.grid_forget()
+                # Show Word preview container at row 1 (where grid_frame was)
                 if hasattr(self, 'word_preview_container') and self.word_preview_container.winfo_exists():
                     self.word_preview_container.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-            # Show sheet container for all Excel tabs
+                    # Configure root to give weight to this row
+                    self.root.rowconfigure(1, weight=1)
+            # Show grid_frame for all Excel tabs
             else:
                 # Hide Word preview container
                 if hasattr(self, 'word_preview_container') and self.word_preview_container.winfo_exists():
                     self.word_preview_container.grid_forget()
-                if self.sheet_container and self.sheet_container.winfo_exists():
-                    self.sheet_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+                # Show grid_frame
+                if hasattr(self, 'grid_frame') and self.grid_frame.winfo_exists():
+                    self.grid_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+                    self.root.rowconfigure(1, weight=1)
 
     def create_data_grid_ribbon_style(self):
         """Create maximized data grid for ribbon interface"""
-        # Main grid container
-        grid_frame = ttk.Frame(self.root, padding="10")
-        grid_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        grid_frame.columnconfigure(0, weight=1)
-        grid_frame.rowconfigure(0, weight=1)
+        # Main grid container - store as instance variable for tab switching
+        self.grid_frame = ttk.Frame(self.root, padding="10")
+        self.grid_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.grid_frame.columnconfigure(0, weight=1)
+        self.grid_frame.rowconfigure(0, weight=1)
 
         # Sheet container (takes all available space)
-        sheet_container = ttk.Frame(grid_frame)
+        sheet_container = ttk.Frame(self.grid_frame)
         sheet_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         sheet_container.columnconfigure(0, weight=1)
         sheet_container.rowconfigure(0, weight=1)
@@ -3204,10 +3209,11 @@ Created with Python, tkinter, tksheet, and openpyxl
 
                 # Add section content
                 for content_type, content in section['content']:
+                    clean_content = self._strip_markdown_formatting(content)
                     if content_type == 'text':
-                        self.word_preview_text.insert(tk.END, f"{content}\n", "normal")
+                        self.word_preview_text.insert(tk.END, f"{clean_content}\n", "normal")
                     elif content_type == 'list':
-                        self.word_preview_text.insert(tk.END, f"• {content}\n", "list_item")
+                        self.word_preview_text.insert(tk.END, f"• {clean_content}\n", "list_item")
 
                 # Add tables in this section
                 for i, table_data in enumerate(parsed['tables']):
@@ -3215,11 +3221,11 @@ Created with Python, tkinter, tksheet, and openpyxl
                         rendered_tables.add(i)
                         self.word_preview_text.insert(tk.END, "\n")
                         # Table headers
-                        headers_str = " │ ".join(table_data['headers'])
+                        headers_str = " │ ".join(self._strip_markdown_formatting(h) for h in table_data['headers'])
                         self.word_preview_text.insert(tk.END, f"  {headers_str}\n", "table_header")
                         # Table rows
                         for row in table_data['rows']:
-                            row_str = " │ ".join(str(cell).replace('\n', ' ') for cell in row)
+                            row_str = " │ ".join(self._strip_markdown_formatting(str(cell).replace('\n', ' ')) for cell in row)
                             self.word_preview_text.insert(tk.END, f"  {row_str}\n", "table_cell")
                         self.word_preview_text.insert(tk.END, "\n")
 
@@ -3228,7 +3234,7 @@ Created with Python, tkinter, tksheet, and openpyxl
                     if bq.get('section') == section['title'] and i not in rendered_blockquotes:
                         rendered_blockquotes.add(i)
                         bq_type = bq.get('type', 'clinical')
-                        content = bq['content']
+                        content = self._strip_markdown_formatting(bq['content'])
 
                         self.word_preview_text.insert(tk.END, "\n")
 
@@ -3330,8 +3336,8 @@ Created with Python, tkinter, tksheet, and openpyxl
                         break
 
                     # This is a continuation of the table cell
-                    # Join with a line break marker that we'll preserve
-                    combined = combined.rstrip() + '\n' + next_line
+                    # Join with a space to keep cell content together when lines are split later
+                    combined = combined.rstrip() + ' ' + next_stripped
                     i += 1
 
                 result.append(combined)
@@ -3718,9 +3724,9 @@ Created with Python, tkinter, tksheet, and openpyxl
                 # Add section content
                 for content_type, content in section['content']:
                     if content_type == 'text':
-                        doc.add_paragraph(content)
+                        doc.add_paragraph(self._strip_markdown_formatting(content))
                     elif content_type == 'list':
-                        doc.add_paragraph(content, style='List Bullet')
+                        doc.add_paragraph(self._strip_markdown_formatting(content), style='List Bullet')
 
                 # Add tables that belong to this section (INLINE, not at the end)
                 for table_data in parsed['tables']:
@@ -3748,7 +3754,7 @@ Created with Python, tkinter, tksheet, and openpyxl
                         # Header row
                         for col_idx, header_text in enumerate(table_data['headers']):
                             cell = table.rows[0].cells[col_idx]
-                            cell.text = header_text
+                            cell.text = self._strip_markdown_formatting(header_text)
                             self._set_cell_shading(cell, header_color)
                             for para in cell.paragraphs:
                                 for run in para.runs:
@@ -3760,7 +3766,7 @@ Created with Python, tkinter, tksheet, and openpyxl
                             for col_idx, cell_text in enumerate(row_data):
                                 if col_idx < num_cols:
                                     cell = table.rows[row_idx].cells[col_idx]
-                                    cell.text = cell_text
+                                    cell.text = self._strip_markdown_formatting(cell_text)
                                     self._set_cell_shading(cell, data_color)
                                     for para in cell.paragraphs:
                                         for run in para.runs:
@@ -3773,7 +3779,7 @@ Created with Python, tkinter, tksheet, and openpyxl
                         doc.add_paragraph()
 
                         # Use the explicit type field from parsing, with fallback to content detection
-                        content = bq['content']
+                        content = self._strip_markdown_formatting(bq['content'])
                         bq_type = bq.get('type', 'clinical')
 
                         # Create a single-cell table for the box effect
@@ -3810,6 +3816,36 @@ Created with Python, tkinter, tksheet, and openpyxl
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to create Word document:\n\n{str(e)}")
+
+    def _strip_markdown_formatting(self, text):
+        """Strip markdown formatting from text for clean Word output.
+
+        Removes:
+        - Bold markers: **text** -> text
+        - Horizontal rules: --- -> (empty)
+        - Extra whitespace
+        """
+        import re
+        if not text:
+            return text
+
+        # Remove bold markers **text** -> text
+        result = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+
+        # Remove italic markers *text* -> text (single asterisk)
+        result = re.sub(r'\*([^*]+)\*', r'\1', result)
+
+        # Remove horizontal rules (lines that are just --- or ---)
+        result = re.sub(r'^-{3,}$', '', result, flags=re.MULTILINE)
+
+        # Remove inline --- that's not part of a word
+        result = re.sub(r'\s*-{3,}\s*', ' ', result)
+
+        # Clean up extra whitespace
+        result = re.sub(r'\n\s*\n', '\n\n', result)
+        result = result.strip()
+
+        return result
 
     def _set_cell_shading(self, cell, hex_color):
         """Set cell background color in Word table"""
