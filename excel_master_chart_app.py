@@ -3441,11 +3441,25 @@ Created with Python, tkinter, tksheet, and openpyxl
             line = lines[i]
             stripped = line.strip()
 
-            # Handle H1 (Title)
+            # Handle H1 (Title or major section)
             if stripped.startswith('# ') and not stripped.startswith('## '):
-                parsed['title'] = stripped[2:].strip()
-                current_section_title = parsed['title']
-                section_stack = []
+                h1_title = stripped[2:].strip()
+
+                # Only the FIRST H1 is the document title
+                # Subsequent H1s are treated as major sections (level 1)
+                if not parsed['title']:
+                    parsed['title'] = h1_title
+                    current_section_title = parsed['title']
+                    section_stack = []
+                else:
+                    # This is a subsequent H1 - treat as a major section
+                    parsed['sections'].append({
+                        'level': 1,  # Level 1 for H1 sections
+                        'title': h1_title,
+                        'content': []
+                    })
+                    current_section_title = h1_title
+                    section_stack = [h1_title]
                 i += 1
                 continue
 
