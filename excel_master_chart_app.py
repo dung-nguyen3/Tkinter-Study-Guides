@@ -598,10 +598,11 @@ class ExcelMasterChartApp:
         export_btn.pack(side=tk.LEFT, padx=2, pady=2)
 
         # === WORD TAB (Markdown to Word conversion) ===
-        word_tab = ttk.Frame(self.ribbon_notebook, padding="5")
+        # Controls only in ribbon - preview is in separate container below
+        word_tab = ttk.Frame(self.ribbon_notebook, padding="2")
         self.ribbon_notebook.add(word_tab, text="Word")
 
-        # Top control panel
+        # Single row control panel (compact)
         control_panel = ttk.Frame(word_tab)
         control_panel.pack(fill=tk.X, padx=0, pady=0)
 
@@ -631,31 +632,15 @@ class ExcelMasterChartApp:
         )
         theme_combo.pack(side=tk.LEFT, padx=2)
 
-        # Action buttons
-        ttk.Button(control_panel, text="Convert to Word", command=self.convert_markdown_to_word).pack(side=tk.LEFT, padx=5, pady=2)
-
-        # Preview panel (scrollable text widget showing formatted content)
-        preview_frame = ttk.Frame(word_tab)
-        preview_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # Add scrollbar
-        scrollbar = ttk.Scrollbar(preview_frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        # Create text widget for preview
-        self.word_preview_text = tk.Text(
-            preview_frame,
-            wrap=tk.WORD,
-            font=("Courier", 10),
-            yscrollcommand=scrollbar.set,
-            state=tk.DISABLED
-        )
-        scrollbar.config(command=self.word_preview_text.yview)
-        self.word_preview_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Export button (renamed from "Convert to Word")
+        ttk.Button(control_panel, text="Export", command=self.convert_markdown_to_word).pack(side=tk.LEFT, padx=5, pady=2)
 
         # Store markdown content
         self.markdown_content = ""
         self.markdown_file_path = None
+
+        # Create Word preview container (separate from ribbon, shown when Word tab is active)
+        self._create_word_preview_container()
 
     def toggle_ribbon(self):
         """Toggle ribbon visibility"""
@@ -673,6 +658,108 @@ class ExcelMasterChartApp:
         # Force window to update layout
         self.root.update_idletasks()
 
+    def _create_word_preview_container(self):
+        """Create the Word preview container (separate from ribbon, shown when Word tab is active)"""
+        # Container frame for Word preview (placed in main content area)
+        self.word_preview_container = ttk.Frame(self.root, padding="10")
+        # Initially hidden - will be shown when Word tab is selected
+
+        # Preview label
+        ttk.Label(self.word_preview_container, text="Document Preview:",
+                  font=("Calibri", 11, "bold")).pack(anchor=tk.W, pady=(0, 5))
+
+        # Create scrollable preview with styled text
+        preview_frame = ttk.Frame(self.word_preview_container)
+        preview_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(preview_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Create text widget for styled preview
+        self.word_preview_text = tk.Text(
+            preview_frame,
+            wrap=tk.WORD,
+            font=("Calibri", 11),
+            yscrollcommand=scrollbar.set,
+            padx=10,
+            pady=10,
+            bg="white"
+        )
+        scrollbar.config(command=self.word_preview_text.yview)
+        self.word_preview_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Configure text tags for styled preview (mimics Word document colors)
+        self.word_preview_text.tag_config("title",
+            font=("Calibri", 16, "bold"),
+            foreground="#1a1a1a",
+            spacing3=10)
+        self.word_preview_text.tag_config("heading2",
+            font=("Calibri", 14, "bold"),
+            foreground="#2c3e50",
+            spacing1=15,
+            spacing3=5)
+        self.word_preview_text.tag_config("heading3",
+            font=("Calibri", 12, "bold"),
+            foreground="#34495e",
+            spacing1=10,
+            spacing3=5)
+        self.word_preview_text.tag_config("clinical_pearl",
+            background="#E8F5E9",
+            font=("Calibri", 10),
+            lmargin1=20,
+            lmargin2=20,
+            rmargin=20,
+            spacing1=5,
+            spacing3=5)
+        self.word_preview_text.tag_config("clinical_header",
+            background="#E8F5E9",
+            font=("Calibri", 11, "bold"),
+            foreground="#2E7D32",
+            lmargin1=20,
+            lmargin2=20)
+        self.word_preview_text.tag_config("memory_trick",
+            background="#E6F3FF",
+            font=("Calibri", 10),
+            lmargin1=20,
+            lmargin2=20,
+            rmargin=20,
+            spacing1=5,
+            spacing3=5)
+        self.word_preview_text.tag_config("memory_header",
+            background="#E6F3FF",
+            font=("Calibri", 11, "bold"),
+            foreground="#1565C0",
+            lmargin1=20,
+            lmargin2=20)
+        self.word_preview_text.tag_config("analogy",
+            background="#FFF3E0",
+            font=("Calibri", 10),
+            lmargin1=20,
+            lmargin2=20,
+            rmargin=20,
+            spacing1=5,
+            spacing3=5)
+        self.word_preview_text.tag_config("analogy_header",
+            background="#FFF3E0",
+            font=("Calibri", 11, "bold"),
+            foreground="#E65100",
+            lmargin1=20,
+            lmargin2=20)
+        self.word_preview_text.tag_config("table_header",
+            background="#D1C4E9",
+            font=("Calibri", 10, "bold"),
+            foreground="#4A148C")
+        self.word_preview_text.tag_config("table_cell",
+            background="#F3E5F5",
+            font=("Calibri", 10))
+        self.word_preview_text.tag_config("normal",
+            font=("Calibri", 10))
+        self.word_preview_text.tag_config("list_item",
+            font=("Calibri", 10),
+            lmargin1=30,
+            lmargin2=40)
+
     def _on_ribbon_tab_changed(self, event=None):
         """Handle ribbon tab changes - show/hide sheet based on active tab"""
         selected_tab_index = self.ribbon_notebook.index(self.ribbon_notebook.select())
@@ -681,12 +768,18 @@ class ExcelMasterChartApp:
         if selected_tab_index < len(tab_names):
             selected_tab = tab_names[selected_tab_index]
 
-            # Hide sheet container when Word tab is selected
+            # Handle Word tab - show word preview, hide sheet
             if selected_tab == "Word":
                 if self.sheet_container and self.sheet_container.winfo_exists():
                     self.sheet_container.grid_forget()
+                # Show Word preview container
+                if hasattr(self, 'word_preview_container') and self.word_preview_container.winfo_exists():
+                    self.word_preview_container.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
             # Show sheet container for all Excel tabs
             else:
+                # Hide Word preview container
+                if hasattr(self, 'word_preview_container') and self.word_preview_container.winfo_exists():
+                    self.word_preview_container.grid_forget()
                 if self.sheet_container and self.sheet_container.winfo_exists():
                     self.sheet_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
@@ -3080,7 +3173,7 @@ Created with Python, tkinter, tksheet, and openpyxl
                 self.markdown_content = ""
 
     def _display_word_preview(self):
-        """Display formatted Word preview in the preview panel"""
+        """Display styled Word preview with colored backgrounds (like actual Word doc)"""
         if not self.markdown_content:
             return
 
@@ -3088,77 +3181,72 @@ Created with Python, tkinter, tksheet, and openpyxl
             # Parse the markdown
             parsed = self.parse_markdown(self.markdown_content)
 
-            # Format for display
-            preview_lines = []
-            preview_lines.append("=" * 80)
-            preview_lines.append("WORD DOCUMENT PREVIEW")
-            preview_lines.append("=" * 80)
-            preview_lines.append("")
+            # Clear and enable the text widget
+            self.word_preview_text.config(state=tk.NORMAL)
+            self.word_preview_text.delete("1.0", tk.END)
 
             # Add title
             if parsed['title']:
-                preview_lines.append(f"{'─' * 80}")
-                preview_lines.append(f"{parsed['title'].upper()}")
-                preview_lines.append(f"{'─' * 80}")
-                preview_lines.append("")
+                self.word_preview_text.insert(tk.END, f"{parsed['title']}\n", "title")
+                self.word_preview_text.insert(tk.END, "\n")
+
+            # Track rendered elements to avoid duplicates
+            rendered_tables = set()
+            rendered_blockquotes = set()
 
             # Process sections
-            for section_idx, section in enumerate(parsed['sections']):
-                # Add section heading
-                heading_char = "═" if section['level'] == 2 else "─"
-                preview_lines.append(f"{heading_char * 80}")
-                preview_lines.append(f"{section['title']}")
-                preview_lines.append(f"{heading_char * 80}")
-                preview_lines.append("")
+            for section in parsed['sections']:
+                # Add section heading with appropriate style
+                if section['level'] == 2:
+                    self.word_preview_text.insert(tk.END, f"\n{section['title']}\n", "heading2")
+                else:
+                    self.word_preview_text.insert(tk.END, f"\n{section['title']}\n", "heading3")
 
                 # Add section content
                 for content_type, content in section['content']:
                     if content_type == 'text':
-                        preview_lines.append(f"{content}")
-                        preview_lines.append("")
+                        self.word_preview_text.insert(tk.END, f"{content}\n", "normal")
                     elif content_type == 'list':
-                        preview_lines.append(f"  • {content}")
+                        self.word_preview_text.insert(tk.END, f"• {content}\n", "list_item")
 
                 # Add tables in this section
-                for table_data in parsed['tables']:
-                    if table_data.get('section') == section['title']:
-                        preview_lines.append("")
-                        preview_lines.append("[TABLE]")
-                        preview_lines.append("─" * 80)
-                        # Add headers
-                        headers_str = " | ".join(table_data['headers'])
-                        preview_lines.append(headers_str)
-                        preview_lines.append("─" * 80)
-                        # Add rows
+                for i, table_data in enumerate(parsed['tables']):
+                    if table_data.get('section') == section['title'] and i not in rendered_tables:
+                        rendered_tables.add(i)
+                        self.word_preview_text.insert(tk.END, "\n")
+                        # Table headers
+                        headers_str = " │ ".join(table_data['headers'])
+                        self.word_preview_text.insert(tk.END, f"  {headers_str}\n", "table_header")
+                        # Table rows
                         for row in table_data['rows']:
-                            row_str = " | ".join(str(cell) for cell in row)
-                            preview_lines.append(row_str)
-                        preview_lines.append("─" * 80)
-                        preview_lines.append("")
+                            row_str = " │ ".join(str(cell).replace('\n', ' ') for cell in row)
+                            self.word_preview_text.insert(tk.END, f"  {row_str}\n", "table_cell")
+                        self.word_preview_text.insert(tk.END, "\n")
 
-                # Add blockquotes in this section
-                for bq in parsed['blockquotes']:
-                    if bq.get('section') == section['title']:
-                        preview_lines.append("")
-                        preview_lines.append("┌" + "─" * 78 + "┐")
-                        preview_lines.append("│ " + bq['content'][:76] + (" │" if len(bq['content']) <= 76 else "...│"))
-                        if len(bq['content']) > 76:
-                            # Wrap long blockquotes
-                            remaining = bq['content'][76:]
-                            while remaining:
-                                chunk = remaining[:76]
-                                preview_lines.append("│ " + chunk.ljust(76) + " │")
-                                remaining = remaining[76:]
-                        preview_lines.append("└" + "─" * 78 + "┘")
-                        preview_lines.append("")
+                # Add blockquotes in this section (with proper colored backgrounds)
+                for i, bq in enumerate(parsed['blockquotes']):
+                    if bq.get('section') == section['title'] and i not in rendered_blockquotes:
+                        rendered_blockquotes.add(i)
+                        bq_type = bq.get('type', 'clinical')
+                        content = bq['content']
 
-                preview_lines.append("")
+                        self.word_preview_text.insert(tk.END, "\n")
 
-            # Update the preview text widget
-            self.word_preview_text.config(state=tk.NORMAL)
-            self.word_preview_text.delete("1.0", tk.END)
-            self.word_preview_text.insert("1.0", "\n".join(preview_lines))
-            self.word_preview_text.config(state=tk.DISABLED)
+                        # Add header and content with appropriate styling
+                        if bq_type == 'memory':
+                            self.word_preview_text.insert(tk.END, "💡 MEMORY TRICKS & MNEMONICS\n", "memory_header")
+                            self.word_preview_text.insert(tk.END, f"{content}\n", "memory_trick")
+                        elif bq_type == 'analogy':
+                            self.word_preview_text.insert(tk.END, "🔗 ANALOGY\n", "analogy_header")
+                            self.word_preview_text.insert(tk.END, f"{content}\n", "analogy")
+                        else:
+                            self.word_preview_text.insert(tk.END, "📋 CLINICAL PEARLS & HIGH-YIELD\n", "clinical_header")
+                            self.word_preview_text.insert(tk.END, f"{content}\n", "clinical_pearl")
+
+                        self.word_preview_text.insert(tk.END, "\n")
+
+            # Leave editable for user modifications
+            # self.word_preview_text.config(state=tk.DISABLED)
 
         except Exception as e:
             # Show error in preview
@@ -3199,8 +3287,131 @@ Created with Python, tkinter, tksheet, and openpyxl
         # Close button
         ttk.Button(preview_win, text="Close", command=preview_win.destroy).pack(pady=10)
 
+    def preprocess_markdown_tables(self, content):
+        """Pre-process markdown to join multi-line table cells before parsing.
+
+        This fixes issues where table cells span multiple lines, like:
+        | **HDL** | >40 mg/dL (male)
+        >50 mg/dL (female) | - |
+
+        These get joined into single lines for proper parsing.
+        """
+        lines = content.split('\n')
+        result = []
+        i = 0
+        in_table = False
+
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+
+            # Check if this is a table row (starts with |)
+            if stripped.startswith('|'):
+                in_table = True
+                # Check if this row is complete (ends with |) or continues on next line
+                combined = line
+
+                # Look ahead for continuation lines (don't start with |, not empty, not a new section)
+                while i + 1 < len(lines):
+                    next_line = lines[i + 1]
+                    next_stripped = next_line.strip()
+
+                    # Stop conditions: empty line, new table row, section header, separator row
+                    if not next_stripped:
+                        break
+                    if next_stripped.startswith('|'):
+                        break
+                    if next_stripped.startswith('#'):
+                        break
+                    if next_stripped.startswith('>') and not any(c.isalnum() for c in next_stripped[1:3]):
+                        # Likely a blockquote, not a ">" in table content
+                        break
+                    if all(c in '|-: ' for c in next_stripped):
+                        break
+
+                    # This is a continuation of the table cell
+                    # Join with a line break marker that we'll preserve
+                    combined = combined.rstrip() + '\n' + next_line
+                    i += 1
+
+                result.append(combined)
+                in_table = True
+            else:
+                # Not a table row
+                if stripped == '' or stripped.startswith('#'):
+                    in_table = False
+                result.append(line)
+
+            i += 1
+
+        return '\n'.join(result)
+
+    def split_blockquotes_by_type(self, blockquote_lines, section):
+        """Split a collected blockquote into separate typed entries.
+
+        Detects headers like **Clinical Pearls:**, **Memory Tricks:**, **Analogy:**
+        and creates separate blockquote entries for each type.
+        """
+        if not blockquote_lines:
+            return []
+
+        groups = []
+        current_type = 'clinical'  # Default type
+        current_lines = []
+
+        # Patterns that indicate a new blockquote section
+        header_patterns = {
+            'clinical': ['**clinical pearls', '**high-yield', '**epidemiology', '**critical'],
+            'memory': ['**memory tricks', '**mnemonics', '**mnemonic'],
+            'analogy': ['**analogy']
+        }
+
+        for line in blockquote_lines:
+            line_lower = line.lower()
+
+            # Check if this line is a header for a new type
+            new_type = None
+            for bq_type, patterns in header_patterns.items():
+                if any(pattern in line_lower for pattern in patterns):
+                    new_type = bq_type
+                    break
+
+            if new_type:
+                # Save current group if it has content
+                if current_lines:
+                    # Clean up empty lines at the end
+                    while current_lines and current_lines[-1] == '':
+                        current_lines.pop()
+                    if current_lines:
+                        groups.append({
+                            'type': current_type,
+                            'content': '\n'.join(current_lines),
+                            'section': section
+                        })
+                # Start new group
+                current_type = new_type
+                current_lines = [line]
+            else:
+                current_lines.append(line)
+
+        # Don't forget the last group
+        if current_lines:
+            while current_lines and current_lines[-1] == '':
+                current_lines.pop()
+            if current_lines:
+                groups.append({
+                    'type': current_type,
+                    'content': '\n'.join(current_lines),
+                    'section': section
+                })
+
+        return groups
+
     def parse_markdown(self, content):
         """Parse markdown content into structured data with proper table and blockquote handling"""
+        # Pre-process to handle multi-line table cells
+        content = self.preprocess_markdown_tables(content)
+
         lines = content.split('\n')
         parsed = {
             'title': '',
@@ -3304,16 +3515,15 @@ Created with Python, tkinter, tksheet, and openpyxl
                         # Non-blockquote content, end blockquote
                         break
 
-                # Save the complete blockquote
+                # Save the complete blockquote - split by type (Clinical Pearls, Memory Tricks, etc.)
                 if blockquote_lines:
                     # Clean up trailing empty lines
                     while blockquote_lines and blockquote_lines[-1] == '':
                         blockquote_lines.pop()
 
-                    parsed['blockquotes'].append({
-                        'content': '\n'.join(blockquote_lines),
-                        'section': current_section_title
-                    })
+                    # Split into typed groups (Clinical Pearls, Memory Tricks, Analogy)
+                    typed_groups = self.split_blockquotes_by_type(blockquote_lines, current_section_title)
+                    parsed['blockquotes'].extend(typed_groups)
                 continue
 
             # Handle tables (markdown tables: header, separator, rows)
@@ -3562,20 +3772,25 @@ Created with Python, tkinter, tksheet, and openpyxl
                     if bq.get('section') == section['title']:
                         doc.add_paragraph()
 
-                        # Check if it's a mnemonic or clinical pearl
+                        # Use the explicit type field from parsing, with fallback to content detection
                         content = bq['content']
-                        is_mnemonic = any(word in content.lower() for word in ['mnemonic', 'memory trick', 'remember'])
+                        bq_type = bq.get('type', 'clinical')
 
                         # Create a single-cell table for the box effect
                         box_table = doc.add_table(rows=1, cols=1)
                         box_table.style = 'Table Grid'
                         cell = box_table.rows[0].cells[0]
 
-                        if is_mnemonic:
+                        # Format based on type
+                        if bq_type == 'memory':
                             cell.text = "💡 MEMORY TRICKS & MNEMONICS\n\n" + content
                             self._set_cell_shading(cell, MNEMONIC_BG)
+                        elif bq_type == 'analogy':
+                            cell.text = "🔗 ANALOGY\n\n" + content
+                            self._set_cell_shading(cell, ANALOGY_BOX_BG)
                         else:
-                            cell.text = "📋 CLINICAL PEARLS\n\n" + content
+                            # Default to clinical pearls
+                            cell.text = "📋 CLINICAL PEARLS & HIGH-YIELD\n\n" + content
                             self._set_cell_shading(cell, CLINICAL_PEARL_BG)
 
                         for para in cell.paragraphs:
