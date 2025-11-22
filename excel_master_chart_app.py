@@ -3698,12 +3698,13 @@ Created with Python, tkinter, tksheet, and openpyxl
             theme_name = self.word_theme_var.get()
             theme = WORD_COLOR_THEMES.get(theme_name, WORD_COLOR_THEMES['Purple - General Topics'])
 
-            # Add title
+            # Add title (purple color like template: 118, 75, 162)
             if parsed['title']:
-                title = doc.add_heading(parsed['title'], 0)
+                title = doc.add_heading(self._strip_markdown_formatting(parsed['title']), 0)
                 title.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 for run in title.runs:
-                    run.font.color.rgb = RGBColor(*theme['header_text'])
+                    run.font.color.rgb = RGBColor(118, 75, 162)
+                    run.font.name = 'Calibri'
 
             # Add Table of Contents if it exists (at the beginning, right after title)
             if parsed['toc']:
@@ -3715,18 +3716,26 @@ Created with Python, tkinter, tksheet, and openpyxl
             # Process sections with integrated tables
             color_index = 0
             for section in parsed['sections']:
-                # Add section heading
+                # Add section heading (purple like template)
                 level = min(section['level'], 3)
-                heading = doc.add_heading(section['title'], level)
+                heading = doc.add_heading(self._strip_markdown_formatting(section['title']), level)
                 for run in heading.runs:
-                    run.font.color.rgb = RGBColor(*theme['header_text'])
+                    run.font.color.rgb = RGBColor(118, 75, 162)
+                    run.font.name = 'Calibri'
 
-                # Add section content
+                # Add section content with Calibri font
                 for content_type, content in section['content']:
+                    clean_content = self._strip_markdown_formatting(content)
                     if content_type == 'text':
-                        doc.add_paragraph(self._strip_markdown_formatting(content))
+                        para = doc.add_paragraph()
+                        run = para.add_run(clean_content)
+                        run.font.name = 'Calibri'
+                        run.font.size = Pt(11)
                     elif content_type == 'list':
-                        doc.add_paragraph(self._strip_markdown_formatting(content), style='List Bullet')
+                        para = doc.add_paragraph(style='List Bullet')
+                        run = para.add_run(clean_content)
+                        run.font.name = 'Calibri'
+                        run.font.size = Pt(11)
 
                 # Add tables that belong to this section (INLINE, not at the end)
                 for table_data in parsed['tables']:
@@ -3751,26 +3760,52 @@ Created with Python, tkinter, tksheet, and openpyxl
                         table.style = 'Table Grid'
                         table.alignment = WD_TABLE_ALIGNMENT.LEFT
 
-                        # Header row
+                        # Set column widths (like template: first col 2.0", others 2.5")
+                        for row in table.rows:
+                            if num_cols > 0:
+                                row.cells[0].width = Inches(2.0)
+                            for col_idx in range(1, num_cols):
+                                row.cells[col_idx].width = Inches(2.5)
+
+                        # Header row - colored background with DARK colored text (not white)
                         for col_idx, header_text in enumerate(table_data['headers']):
                             cell = table.rows[0].cells[col_idx]
                             cell.text = self._strip_markdown_formatting(header_text)
                             self._set_cell_shading(cell, header_color)
                             for para in cell.paragraphs:
+                                para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                                 for run in para.runs:
                                     run.font.bold = True
                                     run.font.size = Pt(11)
+                                    run.font.name = 'Calibri'
+                                    # Set header text color from theme
+                                    if theme.get('header_text'):
+                                        run.font.color.rgb = RGBColor(*theme['header_text'])
 
-                        # Data rows
+                        # Data rows - first column light colored + bold, others WHITE
                         for row_idx, row_data in enumerate(table_data['rows'], 1):
                             for col_idx, cell_text in enumerate(row_data):
                                 if col_idx < num_cols:
                                     cell = table.rows[row_idx].cells[col_idx]
                                     cell.text = self._strip_markdown_formatting(cell_text)
-                                    self._set_cell_shading(cell, data_color)
-                                    for para in cell.paragraphs:
-                                        for run in para.runs:
-                                            run.font.size = Pt(10)
+
+                                    if col_idx == 0:
+                                        # First column: light colored background, bold text
+                                        self._set_cell_shading(cell, data_color)
+                                        for para in cell.paragraphs:
+                                            para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                                            for run in para.runs:
+                                                run.font.bold = True
+                                                run.font.size = Pt(10)
+                                                run.font.name = 'Calibri'
+                                    else:
+                                        # Other columns: WHITE background
+                                        self._set_cell_shading(cell, 'FFFFFF')
+                                        for para in cell.paragraphs:
+                                            para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                                            for run in para.runs:
+                                                run.font.size = Pt(10)
+                                                run.font.name = 'Calibri'
 
                 # Add blockquotes that belong to this section (INLINE)
                 for bq in parsed['blockquotes']:
@@ -3782,26 +3817,38 @@ Created with Python, tkinter, tksheet, and openpyxl
                         content = self._strip_markdown_formatting(bq['content'])
                         bq_type = bq.get('type', 'clinical')
 
-                        # Create a single-cell table for the box effect
+                        # Create a single-cell table for the box effect (full width)
                         box_table = doc.add_table(rows=1, cols=1)
                         box_table.style = 'Table Grid'
+                        box_table.alignment = WD_TABLE_ALIGNMENT.LEFT
                         cell = box_table.rows[0].cells[0]
+                        cell.width = Inches(7.0)  # Full page width
 
-                        # Format based on type
+                        # Format based on type with proper headers
                         if bq_type == 'memory':
-                            cell.text = "💡 MEMORY TRICKS & MNEMONICS\n\n" + content
+                            header_text = "💡 MEMORY TRICKS & MNEMONICS"
                             self._set_cell_shading(cell, MNEMONIC_BG)
                         elif bq_type == 'analogy':
-                            cell.text = "🔗 ANALOGY\n\n" + content
+                            header_text = "🔗 ANALOGY"
                             self._set_cell_shading(cell, ANALOGY_BOX_BG)
                         else:
-                            # Default to clinical pearls
-                            cell.text = "📋 CLINICAL PEARLS & HIGH-YIELD\n\n" + content
+                            header_text = "📋 CLINICAL PEARLS & HIGH-YIELD"
                             self._set_cell_shading(cell, CLINICAL_PEARL_BG)
 
-                        for para in cell.paragraphs:
+                        # Set cell text with header and content
+                        cell.text = header_text + "\n\n" + content
+
+                        # Format paragraphs with Calibri font
+                        for i, para in enumerate(cell.paragraphs):
+                            para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                             for run in para.runs:
-                                run.font.size = Pt(10)
+                                run.font.name = 'Calibri'
+                                if i == 0:
+                                    # Header paragraph - bold
+                                    run.font.bold = True
+                                    run.font.size = Pt(11)
+                                else:
+                                    run.font.size = Pt(10)
 
             # Save document
             doc.save(output_path)
