@@ -3663,6 +3663,9 @@ Created with Python, tkinter, tksheet, and openpyxl
                                 for run in para.runs:
                                     run.font.size = Pt(10)
 
+            # Debug: Track what's being processed
+            debug_log = []
+
             while i < len(lines):
                 line = lines[i]
                 stripped = line.strip()
@@ -3692,6 +3695,7 @@ Created with Python, tkinter, tksheet, and openpyxl
                 # H2 Section
                 elif stripped.startswith('## '):
                     section_title = stripped[3:].strip()
+                    debug_log.append(f"H2 at line {i}: {section_title[:40]}...")
                     heading = doc.add_heading(section_title, 2)
                     for run in heading.runs:
                         run.font.color.rgb = RGBColor(*theme['header_text'])
@@ -3699,6 +3703,7 @@ Created with Python, tkinter, tksheet, and openpyxl
                 # H3 Section
                 elif stripped.startswith('### '):
                     section_title = stripped[4:].strip()
+                    debug_log.append(f"H3 at line {i}: {section_title[:40]}...")
                     heading = doc.add_heading(section_title, 3)
                     for run in heading.runs:
                         run.font.color.rgb = RGBColor(*theme['header_text'])
@@ -3718,11 +3723,14 @@ Created with Python, tkinter, tksheet, and openpyxl
                     while j < len(lines) and lines[j].strip().startswith('|'):
                         table_lines.append(lines[j].strip())
                         j += 1
+                    debug_log.append(f"TABLE at line {i}: {len(table_lines)} rows, headers={table_lines[0][:50] if table_lines else 'none'}...")
                     add_table_to_doc(table_lines)
                     i = j - 1  # -1 because we increment at end
 
                 # Blockquote
                 elif stripped.startswith('>'):
+                    if not in_blockquote:
+                        debug_log.append(f"BLOCKQUOTE START at line {i}")
                     in_blockquote = True
                     quote_content = stripped[1:].strip()
                     current_blockquote_lines.append(quote_content)
@@ -3750,9 +3758,15 @@ Created with Python, tkinter, tksheet, and openpyxl
             # Save document
             doc.save(output_path)
 
+            # Print debug log to console
+            print("\n=== WORD CONVERSION DEBUG LOG ===")
+            for entry in debug_log:
+                print(entry)
+            print("=================================\n")
+
             messagebox.showinfo(
                 "Success",
-                f"Word document created successfully!\n\nLocation:\n{output_path}"
+                f"Word document created successfully!\n\nLocation:\n{output_path}\n\nProcessed: {len(debug_log)} elements"
             )
 
             # Open the file
