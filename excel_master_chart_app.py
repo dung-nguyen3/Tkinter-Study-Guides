@@ -3521,9 +3521,6 @@ Created with Python, tkinter, tksheet, and openpyxl
             messagebox.showwarning("No File", "Please select a markdown file first.")
             return
 
-        # Parse the markdown
-        parsed = self.parse_markdown(self.markdown_content)
-
         # Get output file path
         default_name = "Study_Guide.docx"
         if self.markdown_file_path:
@@ -3554,34 +3551,79 @@ Created with Python, tkinter, tksheet, and openpyxl
             theme_name = self.word_theme_var.get()
             theme = WORD_COLOR_THEMES.get(theme_name, WORD_COLOR_THEMES['Purple - General Topics'])
 
-            # Add title
-            if parsed['title']:
-                title = doc.add_heading(parsed['title'], 0)
-                title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                for run in title.runs:
-                    run.font.color.rgb = RGBColor(*theme['header_text'])
-
-            # Process sections
+            # Process content in document order (line by line)
+            lines = self.markdown_content.split('\n')
             color_index = 0
-            for section in parsed['sections']:
-                # Add section heading
-                level = min(section['level'], 3)
-                heading = doc.add_heading(section['title'], level)
-                for run in heading.runs:
-                    run.font.color.rgb = RGBColor(*theme['header_text'])
+            in_blockquote = False
+            current_blockquote_lines = []
+            i = 0
 
-                # Add section content
-                for content_type, content in section['content']:
-                    if content_type == 'text':
-                        doc.add_paragraph(content)
-                    elif content_type == 'list':
-                        doc.add_paragraph(content, style='List Bullet')
+            def look_ahead_for_blockquote(start_idx):
+                """Check if any upcoming non-empty line starts with >"""
+                for j in range(start_idx, len(lines)):
+                    next_stripped = lines[j].strip()
+                    if next_stripped:
+                        return next_stripped.startswith('>')
+                return False
 
-            # Add tables
-            for table_data in parsed['tables']:
-                doc.add_paragraph()  # Space before table
+            def add_blockquote_to_doc(bq_lines):
+                """Add a blockquote as a styled box in Word"""
+                if not bq_lines:
+                    return
+
+                content = '\n'.join(bq_lines)
+                is_mnemonic = any(word in content.lower() for word in ['mnemonic', 'memory trick'])
+                is_analogy = 'analogy' in content.lower()
+
+                doc.add_paragraph()
+
+                # Create a single-cell table for the box effect
+                box_table = doc.add_table(rows=1, cols=1)
+                box_table.style = 'Table Grid'
+                cell = box_table.rows[0].cells[0]
+
+                # Clean up the content - remove ** markers
+                clean_content = content.replace('**', '')
+
+                if is_mnemonic:
+                    cell.text = clean_content
+                    self._set_cell_shading(cell, MNEMONIC_BG)
+                elif is_analogy:
+                    cell.text = clean_content
+                    self._set_cell_shading(cell, 'FFF3E0')  # Light orange
+                else:
+                    cell.text = clean_content
+                    self._set_cell_shading(cell, CLINICAL_PEARL_BG)
+
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(10)
+
+            def add_table_to_doc(table_lines):
+                """Add a markdown table to Word document"""
+                if not table_lines:
+                    return
+
+                # Parse header row
+                headers = [c.strip() for c in table_lines[0].split('|')[1:-1]]
+                if not headers:
+                    return
+
+                # Collect data rows (skip separator)
+                data_rows = []
+                for line in table_lines[1:]:
+                    if line.replace('-', '').replace('|', '').replace(' ', '').replace(':', '') == '':
+                        continue  # Skip separator
+                    cells = [c.strip() for c in line.split('|')[1:-1]]
+                    # Pad cells if needed
+                    while len(cells) < len(headers):
+                        cells.append('')
+                    data_rows.append(cells[:len(headers)])
+
+                doc.add_paragraph()
 
                 # Determine colors
+                nonlocal color_index
                 if theme['name'] == 'auto':
                     color_set = COLOR_SETS[color_index % len(COLOR_SETS)]
                     header_color = color_set['header']
@@ -3592,56 +3634,118 @@ Created with Python, tkinter, tksheet, and openpyxl
                     data_color = theme['light']
 
                 # Create table
-                num_cols = len(table_data['headers'])
-                num_rows = len(table_data['rows']) + 1  # +1 for header
+                num_cols = len(headers)
+                num_rows = len(data_rows) + 1  # +1 for header
                 table = doc.add_table(rows=num_rows, cols=num_cols)
                 table.style = 'Table Grid'
                 table.alignment = WD_TABLE_ALIGNMENT.LEFT
 
                 # Header row
-                for col_idx, header_text in enumerate(table_data['headers']):
+                for col_idx, header_text in enumerate(headers):
                     cell = table.rows[0].cells[col_idx]
                     cell.text = header_text
-                    self._set_cell_shading(cell, header_color)
+                    if header_color:
+                        self._set_cell_shading(cell, header_color)
                     for para in cell.paragraphs:
                         for run in para.runs:
                             run.font.bold = True
                             run.font.size = Pt(11)
 
                 # Data rows
-                for row_idx, row_data in enumerate(table_data['rows'], 1):
+                for row_idx, row_data in enumerate(data_rows, 1):
                     for col_idx, cell_text in enumerate(row_data):
                         if col_idx < num_cols:
                             cell = table.rows[row_idx].cells[col_idx]
                             cell.text = cell_text
-                            self._set_cell_shading(cell, data_color)
+                            if data_color:
+                                self._set_cell_shading(cell, data_color)
                             for para in cell.paragraphs:
                                 for run in para.runs:
                                     run.font.size = Pt(10)
 
-            # Add blockquotes as Clinical Pearls boxes
-            for bq in parsed['blockquotes']:
-                doc.add_paragraph()
+            while i < len(lines):
+                line = lines[i]
+                stripped = line.strip()
 
-                # Check if it's a mnemonic or clinical pearl
-                content = bq['content']
-                is_mnemonic = any(word in content.lower() for word in ['mnemonic', 'memory trick', 'remember'])
+                # Empty line handling
+                if not stripped:
+                    if in_blockquote:
+                        # Look ahead to see if blockquote continues
+                        if look_ahead_for_blockquote(i + 1):
+                            current_blockquote_lines.append('')
+                        else:
+                            # End blockquote
+                            add_blockquote_to_doc(current_blockquote_lines)
+                            current_blockquote_lines = []
+                            in_blockquote = False
+                    i += 1
+                    continue
 
-                # Create a single-cell table for the box effect
-                box_table = doc.add_table(rows=1, cols=1)
-                box_table.style = 'Table Grid'
-                cell = box_table.rows[0].cells[0]
+                # H1 Title
+                if stripped.startswith('# ') and not stripped.startswith('## '):
+                    title_text = stripped[2:].strip()
+                    title = doc.add_heading(title_text, 0)
+                    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    for run in title.runs:
+                        run.font.color.rgb = RGBColor(*theme['header_text'])
 
-                if is_mnemonic:
-                    cell.text = "💡 MEMORY TRICKS & MNEMONICS\n\n" + content
-                    self._set_cell_shading(cell, MNEMONIC_BG)
+                # H2 Section
+                elif stripped.startswith('## '):
+                    section_title = stripped[3:].strip()
+                    heading = doc.add_heading(section_title, 2)
+                    for run in heading.runs:
+                        run.font.color.rgb = RGBColor(*theme['header_text'])
+
+                # H3 Section
+                elif stripped.startswith('### '):
+                    section_title = stripped[4:].strip()
+                    heading = doc.add_heading(section_title, 3)
+                    for run in heading.runs:
+                        run.font.color.rgb = RGBColor(*theme['header_text'])
+
+                # Horizontal rule
+                elif stripped == '---' or stripped == '***' or stripped == '___':
+                    # Add a subtle paragraph break
+                    para = doc.add_paragraph()
+                    para.paragraph_format.space_before = Pt(6)
+                    para.paragraph_format.space_after = Pt(6)
+
+                # Table (lines starting with |)
+                elif stripped.startswith('|'):
+                    # Collect all table lines
+                    table_lines = []
+                    j = i
+                    while j < len(lines) and lines[j].strip().startswith('|'):
+                        table_lines.append(lines[j].strip())
+                        j += 1
+                    add_table_to_doc(table_lines)
+                    i = j - 1  # -1 because we increment at end
+
+                # Blockquote
+                elif stripped.startswith('>'):
+                    in_blockquote = True
+                    quote_content = stripped[1:].strip()
+                    current_blockquote_lines.append(quote_content)
+
+                # List item
+                elif stripped.startswith('- ') or stripped.startswith('* '):
+                    doc.add_paragraph(stripped[2:].strip(), style='List Bullet')
+
+                # Bold paragraph (like **Summary:**)
+                elif stripped.startswith('**') and stripped.endswith('**'):
+                    para = doc.add_paragraph()
+                    run = para.add_run(stripped.replace('**', ''))
+                    run.bold = True
+
+                # Regular text
                 else:
-                    cell.text = "📋 CLINICAL PEARLS\n\n" + content
-                    self._set_cell_shading(cell, CLINICAL_PEARL_BG)
+                    doc.add_paragraph(stripped)
 
-                for para in cell.paragraphs:
-                    for run in para.runs:
-                        run.font.size = Pt(10)
+                i += 1
+
+            # Handle any remaining blockquote
+            if current_blockquote_lines:
+                add_blockquote_to_doc(current_blockquote_lines)
 
             # Save document
             doc.save(output_path)
