@@ -75,10 +75,10 @@ COLOR_SETS = [
     {'header': 'A0C4E8', 'main': 'BBDEFB', 'row_label': 'ADD1F1'},  # 10. Powder Blue - Alternative blue
 ]
 
-# Special purpose colors
-MNEMONIC_BG = 'E6F3FF'        # Light blue for mnemonics
-CLINICAL_PEARL_BG = 'E8F5E9'   # Light green for clinical pearls
-ANALOGY_BOX_BG = 'FFF9E6'      # Light yellow for analogies
+# Special purpose colors (matching README specifications)
+MNEMONIC_BG = 'FFF9C4'        # Light yellow for memory tricks/mnemonics
+CLINICAL_PEARL_BG = 'E1F5DC'   # Light green for clinical pearls/high-yield
+ANALOGY_BOX_BG = 'FFE0B2'      # Light orange for analogies
 MAIN_TITLE_COLOR = '4472C4'    # Dark blue for sheet titles
 
 # Word document color themes (from LO Word template)
@@ -705,7 +705,7 @@ class ExcelMasterChartApp:
             spacing1=10,
             spacing3=5)
         self.word_preview_text.tag_config("clinical_pearl",
-            background="#E8F5E9",
+            background="#E1F5DC",  # Light green (matches CLINICAL_PEARL_BG)
             font=("Calibri", 10),
             lmargin1=20,
             lmargin2=20,
@@ -713,13 +713,13 @@ class ExcelMasterChartApp:
             spacing1=5,
             spacing3=5)
         self.word_preview_text.tag_config("clinical_header",
-            background="#E8F5E9",
+            background="#E1F5DC",
             font=("Calibri", 11, "bold"),
             foreground="#2E7D32",
             lmargin1=20,
             lmargin2=20)
         self.word_preview_text.tag_config("memory_trick",
-            background="#E6F3FF",
+            background="#FFF9C4",  # Light yellow (matches MNEMONIC_BG)
             font=("Calibri", 10),
             lmargin1=20,
             lmargin2=20,
@@ -727,13 +727,13 @@ class ExcelMasterChartApp:
             spacing1=5,
             spacing3=5)
         self.word_preview_text.tag_config("memory_header",
-            background="#E6F3FF",
+            background="#FFF9C4",
             font=("Calibri", 11, "bold"),
-            foreground="#1565C0",
+            foreground="#F57F17",  # Darker yellow/amber for contrast
             lmargin1=20,
             lmargin2=20)
         self.word_preview_text.tag_config("analogy",
-            background="#FFF3E0",
+            background="#FFE0B2",  # Light orange (matches ANALOGY_BOX_BG)
             font=("Calibri", 10),
             lmargin1=20,
             lmargin2=20,
@@ -741,7 +741,7 @@ class ExcelMasterChartApp:
             spacing1=5,
             spacing3=5)
         self.word_preview_text.tag_config("analogy_header",
-            background="#FFF3E0",
+            background="#FFE0B2",
             font=("Calibri", 11, "bold"),
             foreground="#E65100",
             lmargin1=20,
@@ -3829,21 +3829,31 @@ Created with Python, tkinter, tksheet, and openpyxl
         if not text:
             return text
 
-        # Remove bold markers **text** -> text
-        result = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+        result = text
 
-        # Remove italic markers *text* -> text (single asterisk)
-        result = re.sub(r'\*([^*]+)\*', r'\1', result)
+        # Remove bold markers **text** -> text (non-greedy, allows * inside)
+        # Use non-greedy matching to handle multiple bold sections
+        while '**' in result:
+            new_result = re.sub(r'\*\*(.+?)\*\*', r'\1', result, flags=re.DOTALL)
+            if new_result == result:
+                # No more matches, remove any remaining **
+                result = result.replace('**', '')
+                break
+            result = new_result
 
-        # Remove horizontal rules (lines that are just --- or ---)
-        result = re.sub(r'^-{3,}$', '', result, flags=re.MULTILINE)
+        # Remove italic markers *text* -> text (single asterisk, non-greedy)
+        result = re.sub(r'(?<!\*)\*([^*\n]+?)\*(?!\*)', r'\1', result)
+
+        # Remove horizontal rules (lines that are just --- or more dashes)
+        result = re.sub(r'^-{3,}\s*$', '', result, flags=re.MULTILINE)
 
         # Remove inline --- that's not part of a word
-        result = re.sub(r'\s*-{3,}\s*', ' ', result)
+        result = re.sub(r'\s+-{3,}\s+', ' ', result)
 
-        # Clean up extra whitespace
-        result = re.sub(r'\n\s*\n', '\n\n', result)
-        result = result.strip()
+        # Clean up extra whitespace and blank lines
+        result = re.sub(r'\n\s*\n\s*\n', '\n\n', result)
+        result = re.sub(r'^\s+', '', result)  # Leading whitespace
+        result = re.sub(r'\s+$', '', result)  # Trailing whitespace
 
         return result
 
