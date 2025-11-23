@@ -3746,23 +3746,27 @@ Created with Python, tkinter, tksheet, and openpyxl
                     run.font.size = Pt(11)
                 doc.add_paragraph()  # Blank line after TOC
 
-            # Track H1 sections for page breaks
-            h1_section_count = 0
+            # Track SECTION headings for page breaks (only between actual SECTION X headings)
+            seen_section_heading = False
 
             # Process sections with integrated tables
             color_index = 0
             for section in parsed['sections']:
                 section_level = section['level']
+                section_title = section['title']
 
-                # Add page break before H1 sections (except first one)
-                if section_level == 1:
-                    if h1_section_count > 0:
+                # Add page break before SECTION headings (except first one)
+                # Only add page breaks between headings that start with "SECTION" or "Section"
+                is_section_heading = section_title.upper().startswith('SECTION')
+
+                if is_section_heading:
+                    if seen_section_heading:
                         doc.add_page_break()
-                    h1_section_count += 1
+                    seen_section_heading = True
 
                 # Add section heading
                 level = min(section_level, 3)
-                heading = doc.add_heading(self._strip_markdown_formatting(section['title']), level)
+                heading = doc.add_heading(self._strip_markdown_formatting(section_title), level)
 
                 # Only Level 1 headings get purple color (per template)
                 # Level 2 and 3 headings use Word defaults (NO color override)
