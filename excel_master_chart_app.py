@@ -3853,12 +3853,24 @@ Created with Python, tkinter, tksheet, and openpyxl
                         table.style = 'Table Grid'
                         table.alignment = WD_TABLE_ALIGNMENT.LEFT
 
-                        # Set column widths (like template: first col 2.0", others 2.5")
+                        # Set column widths based on number of columns (matching template)
+                        # Template: 2-col uses 2.0" + 5.0", 3-col uses 2.0" + 2.5" + 2.5"
+                        # Total page width ~7.0" with 0.8" margins on each side
                         for row in table.rows:
-                            if num_cols > 0:
+                            if num_cols == 2:
+                                # 2-column: like template category_details_table
                                 row.cells[0].width = Inches(2.0)
-                            for col_idx in range(1, num_cols):
-                                row.cells[col_idx].width = Inches(2.5)
+                                row.cells[1].width = Inches(5.0)
+                            elif num_cols == 3:
+                                # 3-column: like template comparison_table
+                                row.cells[0].width = Inches(2.0)
+                                row.cells[1].width = Inches(2.5)
+                                row.cells[2].width = Inches(2.5)
+                            else:
+                                # 4+ columns: distribute evenly to fit ~7.0" total
+                                col_width = 7.0 / num_cols
+                                for col_idx in range(num_cols):
+                                    row.cells[col_idx].width = Inches(col_width)
 
                         # Header row - colored background with colored text (using template functions)
                         for col_idx, header_text in enumerate(table_data['headers']):
