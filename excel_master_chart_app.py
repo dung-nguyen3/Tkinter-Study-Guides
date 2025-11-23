@@ -3735,24 +3735,40 @@ Created with Python, tkinter, tksheet, and openpyxl
                 title.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 for run in title.runs:
                     run.font.color.rgb = RGBColor(118, 75, 162)
-                    run.font.name = 'Calibri'
 
             # Add Table of Contents if it exists (at the beginning, right after title)
             if parsed['toc']:
-                doc.add_heading('Table of Contents', level=2)
+                toc_heading = doc.add_heading('Table of Contents', level=2)
+                # Level 2 headings: NO color override (per template)
                 for toc_line in parsed['toc']:
-                    doc.add_paragraph(toc_line, style='List Bullet')
+                    para = doc.add_paragraph(style='List Bullet')
+                    run = para.add_run(self._strip_markdown_formatting(toc_line))
+                    run.font.size = Pt(11)
                 doc.add_paragraph()  # Blank line after TOC
+
+            # Track H1 sections for page breaks
+            h1_section_count = 0
 
             # Process sections with integrated tables
             color_index = 0
             for section in parsed['sections']:
-                # Add section heading (purple like template)
-                level = min(section['level'], 3)
+                section_level = section['level']
+
+                # Add page break before H1 sections (except first one)
+                if section_level == 1:
+                    if h1_section_count > 0:
+                        doc.add_page_break()
+                    h1_section_count += 1
+
+                # Add section heading
+                level = min(section_level, 3)
                 heading = doc.add_heading(self._strip_markdown_formatting(section['title']), level)
-                for run in heading.runs:
-                    run.font.color.rgb = RGBColor(118, 75, 162)
-                    run.font.name = 'Calibri'
+
+                # Only Level 1 headings get purple color (per template)
+                # Level 2 and 3 headings use Word defaults (NO color override)
+                if level == 1:
+                    for run in heading.runs:
+                        run.font.color.rgb = RGBColor(118, 75, 162)
 
                 # Add section content with Calibri font
                 for content_type, content in section['content']:
@@ -3772,17 +3788,19 @@ Created with Python, tkinter, tksheet, and openpyxl
                 for table_data in parsed['tables']:
                     # Check if this table belongs to the current section
                     if table_data.get('section') == section['title']:
-                        doc.add_paragraph()  # Space before table
+                        doc.add_paragraph()  # Blank line before table
 
-                        # Determine colors
+                        # Determine colors using template formula
                         if theme['name'] == 'auto':
                             color_set = COLOR_SETS[color_index % len(COLOR_SETS)]
                             header_color = color_set['header']
-                            data_color = color_set['main']
+                            # Calculate light_bg using template formula: [0] + 'E' + [2:]
+                            light_bg = header_color[0] + 'E' + header_color[2:]
                             color_index += 1
                         else:
                             header_color = theme['header']
-                            data_color = theme['light']
+                            # Calculate light_bg using template formula: [0] + 'E' + [2:]
+                            light_bg = header_color[0] + 'E' + header_color[2:]
 
                         # Create table
                         num_cols = len(table_data['headers'])
@@ -3798,7 +3816,7 @@ Created with Python, tkinter, tksheet, and openpyxl
                             for col_idx in range(1, num_cols):
                                 row.cells[col_idx].width = Inches(2.5)
 
-                        # Header row - colored background with DARK colored text (not white)
+                        # Header row - colored background with colored text
                         for col_idx, header_text in enumerate(table_data['headers']):
                             cell = table.rows[0].cells[col_idx]
                             cell.text = self._strip_markdown_formatting(header_text)
@@ -3807,13 +3825,13 @@ Created with Python, tkinter, tksheet, and openpyxl
                                 para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                                 for run in para.runs:
                                     run.font.bold = True
-                                    run.font.size = Pt(11)
+                                    run.font.size = Pt(12)  # Template uses 12pt
                                     run.font.name = 'Calibri'
                                     # Set header text color from theme
                                     if theme.get('header_text'):
                                         run.font.color.rgb = RGBColor(*theme['header_text'])
 
-                        # Data rows - first column light colored + bold, others WHITE
+                        # Data rows - first column: light_bg + bold, others: WHITE
                         for row_idx, row_data in enumerate(table_data['rows'], 1):
                             for col_idx, cell_text in enumerate(row_data):
                                 if col_idx < num_cols:
@@ -3821,28 +3839,30 @@ Created with Python, tkinter, tksheet, and openpyxl
                                     cell.text = self._strip_markdown_formatting(cell_text)
 
                                     if col_idx == 0:
-                                        # First column: light colored background, bold text
-                                        self._set_cell_shading(cell, data_color)
+                                        # First column: light_bg background, bold text
+                                        self._set_cell_shading(cell, light_bg)
                                         for para in cell.paragraphs:
                                             para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                                             for run in para.runs:
                                                 run.font.bold = True
-                                                run.font.size = Pt(10)
+                                                run.font.size = Pt(12)  # Template uses 12pt
                                                 run.font.name = 'Calibri'
                                     else:
-                                        # Other columns: WHITE background
+                                        # Other columns: WHITE background (per template)
                                         self._set_cell_shading(cell, 'FFFFFF')
                                         for para in cell.paragraphs:
                                             para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                                             for run in para.runs:
-                                                run.font.size = Pt(10)
+                                                run.font.size = Pt(12)  # Template uses 12pt
                                                 run.font.name = 'Calibri'
+
+                        doc.add_paragraph()  # Blank line after table (per template)
 
                 # Add blockquotes that belong to this section (INLINE)
                 for bq in parsed['blockquotes']:
                     # Check if this blockquote belongs to the current section
                     if bq.get('section') == section['title']:
-                        doc.add_paragraph()
+                        doc.add_paragraph()  # Blank line before
 
                         # Use the explicit type field from parsing, with fallback to content detection
                         content = self._strip_markdown_formatting(bq['content'])
@@ -3869,17 +3889,17 @@ Created with Python, tkinter, tksheet, and openpyxl
                         # Set cell text with header and content
                         cell.text = header_text + "\n\n" + content
 
-                        # Format paragraphs with Calibri font
+                        # Format paragraphs with Calibri 12pt (per template)
                         for i, para in enumerate(cell.paragraphs):
                             para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                             for run in para.runs:
                                 run.font.name = 'Calibri'
+                                run.font.size = Pt(12)  # Template uses 12pt
                                 if i == 0:
                                     # Header paragraph - bold
                                     run.font.bold = True
-                                    run.font.size = Pt(11)
-                                else:
-                                    run.font.size = Pt(10)
+
+                        doc.add_paragraph()  # Blank line after (per template)
 
             # Save document
             doc.save(output_path)
