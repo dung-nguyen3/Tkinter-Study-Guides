@@ -108,12 +108,49 @@ WORD_COLOR_THEMES = {
         'name': 'red'
     },
     'Auto (Rotate Colors)': {
-        'header': None,  # Will use COLOR_SETS rotation
+        'header': None,  # Will use TEMPLATE_COLOR_SETS rotation
         'header_text': (0, 0, 0),
         'light': None,
         'name': 'auto'
     }
 }
+
+# Template color sets - EXACT colors from LO Word 11-5 template.py
+# These are the 4 color themes used in the Word template for tables
+TEMPLATE_COLOR_SETS = [
+    {'header': 'D1C4E9', 'header_text': (74, 20, 140)},    # Purple - General/Main Topics
+    {'header': 'FFCDD2', 'header_text': (183, 28, 28)},    # Red - Pathology/Abnormal
+    {'header': 'B3E5FC', 'header_text': (1, 87, 155)},     # Blue - Diagnostic/Exam
+    {'header': 'C8E6C9', 'header_text': (27, 94, 32)},     # Green - Normal/Anatomy
+]
+
+
+# ============================================================================
+# WORD TEMPLATE HELPER FUNCTIONS (from LO Word 11-5 template.py)
+# ============================================================================
+def set_cell_background(cell, hex_color):
+    """Set cell background color using hex color string - EXACT from template"""
+    if not DOCX_AVAILABLE:
+        return
+    shading_elm = OxmlElement('w:shd')
+    shading_elm.set(qn('w:fill'), hex_color)
+    cell._element.get_or_add_tcPr().append(shading_elm)
+
+
+def set_cell_text(cell, text, bold=False, color=None, size=12, font_name='Calibri'):
+    """Set cell text with formatting - EXACT from template"""
+    if not DOCX_AVAILABLE:
+        return
+    cell.text = text
+    for paragraph in cell.paragraphs:
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        for run in paragraph.runs:
+            run.font.size = Pt(size)
+            run.font.name = font_name
+            run.bold = bold
+            if color:
+                run.font.color.rgb = RGBColor(*color)
+
 
 # Header formatting constants (backward compatible)
 HEADER_BG_COLOR = "#4472C4"
@@ -3794,15 +3831,18 @@ Created with Python, tkinter, tksheet, and openpyxl
                     if table_data.get('section') == section['title']:
                         doc.add_paragraph()  # Blank line before table
 
-                        # Determine colors using template formula
+                        # Determine colors using TEMPLATE colors (exact from LO Word template)
                         if theme['name'] == 'auto':
-                            color_set = COLOR_SETS[color_index % len(COLOR_SETS)]
+                            # Use TEMPLATE_COLOR_SETS with exact template colors
+                            color_set = TEMPLATE_COLOR_SETS[color_index % len(TEMPLATE_COLOR_SETS)]
                             header_color = color_set['header']
+                            header_text_color = color_set['header_text']
                             # Calculate light_bg using template formula: [0] + 'E' + [2:]
                             light_bg = header_color[0] + 'E' + header_color[2:]
                             color_index += 1
                         else:
                             header_color = theme['header']
+                            header_text_color = theme['header_text']
                             # Calculate light_bg using template formula: [0] + 'E' + [2:]
                             light_bg = header_color[0] + 'E' + header_color[2:]
 
@@ -3820,45 +3860,28 @@ Created with Python, tkinter, tksheet, and openpyxl
                             for col_idx in range(1, num_cols):
                                 row.cells[col_idx].width = Inches(2.5)
 
-                        # Header row - colored background with colored text
+                        # Header row - colored background with colored text (using template functions)
                         for col_idx, header_text in enumerate(table_data['headers']):
                             cell = table.rows[0].cells[col_idx]
-                            cell.text = self._strip_markdown_formatting(header_text)
-                            self._set_cell_shading(cell, header_color)
-                            for para in cell.paragraphs:
-                                para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                                for run in para.runs:
-                                    run.font.bold = True
-                                    run.font.size = Pt(12)  # Template uses 12pt
-                                    run.font.name = 'Calibri'
-                                    # Set header text color from theme
-                                    if theme.get('header_text'):
-                                        run.font.color.rgb = RGBColor(*theme['header_text'])
+                            set_cell_background(cell, header_color)
+                            set_cell_text(cell, self._strip_markdown_formatting(header_text),
+                                         bold=True, color=header_text_color, size=12)
 
-                        # Data rows - first column: light_bg + bold, others: WHITE
+                        # Data rows - first column: light_bg + bold, others: WHITE (using template functions)
                         for row_idx, row_data in enumerate(table_data['rows'], 1):
                             for col_idx, cell_text in enumerate(row_data):
                                 if col_idx < num_cols:
                                     cell = table.rows[row_idx].cells[col_idx]
-                                    cell.text = self._strip_markdown_formatting(cell_text)
+                                    clean_text = self._strip_markdown_formatting(cell_text)
 
                                     if col_idx == 0:
-                                        # First column: light_bg background, bold text
-                                        self._set_cell_shading(cell, light_bg)
-                                        for para in cell.paragraphs:
-                                            para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                                            for run in para.runs:
-                                                run.font.bold = True
-                                                run.font.size = Pt(12)  # Template uses 12pt
-                                                run.font.name = 'Calibri'
+                                        # First column: light_bg background, bold text, black color
+                                        set_cell_background(cell, light_bg)
+                                        set_cell_text(cell, clean_text, bold=True, size=12)
                                     else:
                                         # Other columns: WHITE background (per template)
-                                        self._set_cell_shading(cell, 'FFFFFF')
-                                        for para in cell.paragraphs:
-                                            para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                                            for run in para.runs:
-                                                run.font.size = Pt(12)  # Template uses 12pt
-                                                run.font.name = 'Calibri'
+                                        set_cell_background(cell, 'FFFFFF')
+                                        set_cell_text(cell, clean_text, size=12)
 
                         doc.add_paragraph()  # Blank line after table (per template)
 
@@ -3879,16 +3902,16 @@ Created with Python, tkinter, tksheet, and openpyxl
                         cell = box_table.rows[0].cells[0]
                         cell.width = Inches(7.0)  # Full page width
 
-                        # Format based on type with proper headers
+                        # Format based on type with proper headers (using template function)
                         if bq_type == 'memory':
                             header_text = "💡 MEMORY TRICKS & MNEMONICS"
-                            self._set_cell_shading(cell, MNEMONIC_BG)
+                            set_cell_background(cell, MNEMONIC_BG)
                         elif bq_type == 'analogy':
                             header_text = "🔗 ANALOGY"
-                            self._set_cell_shading(cell, ANALOGY_BOX_BG)
+                            set_cell_background(cell, ANALOGY_BOX_BG)
                         else:
                             header_text = "📋 CLINICAL PEARLS & HIGH-YIELD"
-                            self._set_cell_shading(cell, CLINICAL_PEARL_BG)
+                            set_cell_background(cell, CLINICAL_PEARL_BG)
 
                         # Set cell text with header and content
                         cell.text = header_text + "\n\n" + content
@@ -3958,12 +3981,6 @@ Created with Python, tkinter, tksheet, and openpyxl
         result = re.sub(r'\s+$', '', result)  # Trailing whitespace
 
         return result
-
-    def _set_cell_shading(self, cell, hex_color):
-        """Set cell background color in Word table"""
-        shading_elm = OxmlElement('w:shd')
-        shading_elm.set(qn('w:fill'), hex_color)
-        cell._element.get_or_add_tcPr().append(shading_elm)
 
 
 # ============================================================================
